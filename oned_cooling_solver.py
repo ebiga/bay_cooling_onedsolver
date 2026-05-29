@@ -112,8 +112,8 @@ def size_bay_ventilation(q_cooling, t_inf, p_inf, mach, cp_exit, t_max_celsius, 
         
         # Node 1 (Throat): Subsonic Static State
         m_1 = solve_throat_mach(mdot, a_throat_guess, p_t_1, t_t_1)
-        t_static_1 = t_t_1 / (1.0 + 0.2 * m_1**2)
-        p_static_1 = p_t_1 / (1.0 + 0.2 * m_1**2)**3.5
+        t_static_1 = t_t_1 / (1.0 + gamm2 * m_1**2)
+        p_static_1 = p_t_1 / (1.0 + gamm2 * m_1**2)**(gamma/gamm1)
         rho_static_1 = p_static_1 / (R_gas * t_static_1)
         v_1 = m_1 * math.sqrt(gamma * R_gas * t_static_1)
         
@@ -124,7 +124,7 @@ def size_bay_ventilation(q_cooling, t_inf, p_inf, mach, cp_exit, t_max_celsius, 
         rho_static_2 = p_static_2 / (R_gas * t_static_2)
         v_2 = mdot / (rho_static_2 * a_exit)
         m_2 = v_2 / math.sqrt(gamma * R_gas * t_static_2)
-        p_t_2 = p_static_2 * (1.0 + 0.2 * m_2**2)**3.5
+        p_t_2 = p_static_2 * (1.0 + gamm2 * m_2**2)**(gamma/gamm1)
         
         # Losses (Friction + Thermal Expansion Rayleigh Penalty)
         dp_friction = k_sys * (0.5 * rho_static_1 * v_1**2)
