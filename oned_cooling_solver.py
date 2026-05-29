@@ -1,0 +1,167 @@
+import math
+from scipy.optimize import root_scalar
+from scipy.optimize import minimize, LinearConstraint, Bounds
+
+
+gamma=1.4
+R_gas=287.05
+cp_air = 1005.0
+
+
+def naca_pressure_recovery(mfr):
+    """
+    Empirical polynomial fit for a standard NACA submerged flush inlet 
+    pressure recovery factor (eta_d) vs Mass Flow Ratio (MFR).
+    """
+    mfr_clamped = max(0.01, min(mfr, 0.99)) # Passive limit guardrail
+    eta = -1.1 * (mfr_clamped - 0.65)**2 + 0.85
+    return max(0.1, eta)
+
+
+def solve_throat_mach(mfr_target_kg_m3, S_throat_m2, Ptot_Pa, Ttot_Pa):
+    """
+    Inverts the 1D compressible Mass Flow Parameter (MFP) equation 
+    to find the true subsonic static Mach number at the throat.
+    """
+
+    def throat_Mach_for_target_mfr(x, mfr_target_kg_m3, S_throat_m2, Ptot_Pa, Ttot_Pa):
+        gm1 = gamma - 1.
+
+        # define freestream total properties
+        rhotot_kg_m3 = Ptot_Pa / (R_gas * Ttot_Pa)
+
+        # define the local (inlet) conditions to be optimised
+        isenM = 1. + 0.5*gm1 * x[0]**2.
+
+        p1_Pa = Ptot_Pa / (isenM**(gamma/gm1))
+        rho1_kg_m3 = rhotot_kg_m3 / (isenM**(1./gm1))
+        M1 = mfr_target_kg_m3/(S_throat_m2 * math.sqrt(gamma*p1_Pa*rho1_kg_m3))
+
+        return (x[0] - M1)**2.
+
+    choking_constraint_b = Bounds( 0., 1. )
+    choking_constraint_c = LinearConstraint( 1., 0., 1. )
+    
+    opts = {"f_target": 1e-12, "tol": 1e-8}
+    res = minimize( throat_Mach_for_target_mfr, x0=[0.5], args=(mfr_target_kg_m3, S_throat_m2, Ptot_Pa, Ttot_Pa), method='L-BFGS-B', bounds=choking_constraint_b, constraints=choking_constraint_c, options=opts)
+    MM = res.x[0] + math.sqrt(res.fun)
+
+    return MM
+
+
+def size_bay_ventilation(q_cooling, t_inf, p_inf, mach, cp_exit, t_max_celsius, k_sys=2.0):
+    """
+    Sizes the required NACA inlet throat area for an equipment bay based on 
+    the maximum rated component temperature boundary condition.
+    """
+    
+    # Convert system limit to Kelvin
+    t_max = t_max_celsius + 273.15
+    
+    # 1. Freestream Aerodynamics & Stagnation States
+    a_inf = math.sqrt(gamma * R_gas * t_inf)
+    v_inf = mach * a_inf
+    rho_inf = p_inf / (R_gas * t_inf)
+    q_inf = 0.5 * gamma * p_inf * (mach**2)
+    
+    p_t_inf = p_inf * (1.0 + 0.2 * mach**2)**3.5
+    t_t_inf = t_inf * (1.0 + 0.2 * mach**2)
+    
+    # Thermal Feasibility Check
+    if t_t_inf >= t_max:
+        return {
+            "status": "Infeasible", 
+            "reason": f"Ram air total temp ({t_t_inf-273.15:.1f}°C) exceeds max system rating ({t_max_celsius}°C)."
+        }
+        
+    # 2. Dynamic Mass Flow Requirement based on Ambient Environment
+    dt_allowed = t_max - t_t_inf
+    mdot = q_cooling / (cp_air * dt_allowed)
+    
+    # 3. Fixed Compartment Exit Pressure Boundary
+    p_static_2 = p_inf + cp_exit * q_inf
+    t_t_2 = t_max  # The air leaves at the maximum rated temperature limit
+    
+    # 4. Define the Geometric Residual Function for Scipy
+    def area_residual(x):
+        a_throat_guess = x[0]
+
+        if a_throat_guess <= 1e-6:
+            return 1e6
+            
+        a_exit = a_throat_guess  # Balanced duct area assumption
+        
+        # Calculate local MFR
+        mfr = mdot / (rho_inf * v_inf * a_throat_guess)
+        if mfr >= 1.0:
+            return 1e6 * mfr  # Violates passive intake physics
+            
+        eta_d = naca_pressure_recovery(mfr)
+        p_t_1 = p_inf + eta_d * (p_t_inf - p_inf)
+        t_t_1 = t_t_inf
+        
+        # Node 1 (Throat): Subsonic Static State
+        m_1 = solve_throat_mach(mdot, a_throat_guess, p_t_1, t_t_1)
+        t_static_1 = t_t_1 / (1.0 + 0.2 * m_1**2)
+        p_static_1 = p_t_1 / (1.0 + 0.2 * m_1**2)**3.5
+        rho_static_1 = p_static_1 / (R_gas * t_static_1)
+        v_1 = m_1 * math.sqrt(gamma * R_gas * t_static_1)
+        
+        # Node 2 (Exit): Static State via Quadratic Energy Equation
+        coeff_a = (R_gas * mdot)**2 / (2.0 * cp_air * (p_static_2 * a_exit)**2)
+        t_static_2 = (-1.0 + math.sqrt(1.0 + 4.0 * coeff_a * t_t_2)) / (2.0 * coeff_a)
+        
+        rho_static_2 = p_static_2 / (R_gas * t_static_2)
+        v_2 = mdot / (rho_static_2 * a_exit)
+        m_2 = v_2 / math.sqrt(gamma * R_gas * t_static_2)
+        p_t_2 = p_static_2 * (1.0 + 0.2 * m_2**2)**3.5
+        
+        # Losses (Friction + Thermal Expansion Rayleigh Penalty)
+        dp_friction = k_sys * (0.5 * rho_static_1 * v_1**2)
+        dp_thermal = (mdot**2 / a_throat_guess**2) * ((1.0 / rho_static_2) - (1.0 / rho_static_1))
+        
+        calculated_p_t_2 = p_t_1 - dp_friction - dp_thermal
+        return calculated_p_t_2 - p_t_2
+
+    # Solve for required area
+    try:
+        throat_area_bounds = Bounds( 0.0001, 0.2 )
+        
+        opts = {"f_target": 1e-12, "tol": 1e-8}
+        res = minimize( area_residual, x0=[0.1], method='L-BFGS-B', bounds=throat_area_bounds, options=opts)
+        final_area = res.x[0]
+
+        final_mfr = mdot / (rho_inf * v_inf * final_area)
+        
+        return {
+            "status": "Success",
+            "mdot": mdot,
+            "dt_air": dt_allowed,
+            "a_throat_cm2": final_area * 10000.0,
+            "mfr": final_mfr,
+            "eta_d": naca_pressure_recovery(final_mfr)
+        }
+    except ValueError:
+        return {
+            "status": "Failed",
+            "reason": "Available ram pressure cannot overcome duct losses for this mass flow requirement."
+        }
+
+
+
+
+if __name__ == "__main__":
+    Q_BAY_LOAD = 4500.    # 4.5 kW total heat rejected by systems into the bay
+    T_SYSTEM_MAX = 70.0     # Systems are rated up to 70 °C maximum
+    
+    sl_sim = size_bay_ventilation(
+        q_cooling=Q_BAY_LOAD, t_inf=288.15, p_inf=101325.0, mach=0.5, cp_exit=0.1, t_max_celsius=T_SYSTEM_MAX
+    )
+    
+    if sl_sim["status"] == "Success":
+        print(f"  Calculated Target mdot   : {sl_sim['mdot']:.4f} kg/s")
+        print(f"  Resulting Air ΔT         : {sl_sim['dt_air']:.1f} K")
+        print(f"  REQUIRED NACA Throat Area: {sl_sim['a_throat_cm2']:.2f} cm²")
+        print(f"  Operating MFR            : {sl_sim['mfr']:.3f}")
+    else:
+        print(f"  Sizing Failed: {sl_sim.get('reason')}")
