@@ -25,16 +25,16 @@ def solve_throat_mach(mfr_target_kg_m3, S_throat_m2, Ptot_Pa, Ttot_Pa):
     """
 
     def throat_Mach_for_target_mfr(x, mfr_target_kg_m3, S_throat_m2, Ptot_Pa, Ttot_Pa):
-        gm1 = gamma - 1.
+        gamm1 = gamma - 1.
 
         # define freestream total properties
         rhotot_kg_m3 = Ptot_Pa / (R_gas * Ttot_Pa)
 
         # define the local (inlet) conditions to be optimised
-        isenM = 1. + 0.5*gm1 * x[0]**2.
+        isenM = 1. + 0.5*gamm1 * x[0]**2.
 
-        p1_Pa = Ptot_Pa / (isenM**(gamma/gm1))
-        rho1_kg_m3 = rhotot_kg_m3 / (isenM**(1./gm1))
+        p1_Pa = Ptot_Pa / (isenM**(gamma/gamm1))
+        rho1_kg_m3 = rhotot_kg_m3 / (isenM**(1./gamm1))
         M1 = mfr_target_kg_m3/(S_throat_m2 * math.sqrt(gamma*p1_Pa*rho1_kg_m3))
 
         return (x[0] - M1)**2.
@@ -54,6 +54,8 @@ def size_bay_ventilation(q_cooling, t_inf, p_inf, mach, cp_exit, t_max_celsius, 
     Sizes the required NACA inlet throat area for an equipment bay based on 
     the maximum rated component temperature boundary condition.
     """
+    gamm1 = gamma - 1.
+    gamm2 = gamm1/2.
     
     # Convert system limit to Kelvin
     t_max = t_max_celsius + 273.15
@@ -62,10 +64,11 @@ def size_bay_ventilation(q_cooling, t_inf, p_inf, mach, cp_exit, t_max_celsius, 
     a_inf = math.sqrt(gamma * R_gas * t_inf)
     v_inf = mach * a_inf
     rho_inf = p_inf / (R_gas * t_inf)
-    q_inf = 0.5 * gamma * p_inf * (mach**2)
     
-    p_t_inf = p_inf * (1.0 + 0.2 * mach**2)**3.5
-    t_t_inf = t_inf * (1.0 + 0.2 * mach**2)
+    p_t_inf = p_inf * (1.0 + gamm2 * mach**2)**(gamma/gamm1)
+    t_t_inf = t_inf * (1.0 + gamm2 * mach**2)
+
+    qdin_inf = p_t_inf - p_inf
     
     # Thermal Feasibility Check
     if t_t_inf >= t_max:
@@ -79,7 +82,7 @@ def size_bay_ventilation(q_cooling, t_inf, p_inf, mach, cp_exit, t_max_celsius, 
     mdot = q_cooling / (cp_air * dt_allowed)
     
     # 3. Fixed Compartment Exit Pressure Boundary
-    p_static_2 = p_inf + cp_exit * q_inf
+    p_static_2 = p_inf + cp_exit * qdin_inf
     t_t_2 = t_max  # The air leaves at the maximum rated temperature limit
     
     # 4. Define the Geometric Residual Function for Scipy
