@@ -12,6 +12,7 @@ def naca_pressure_recovery(mfr):
     """
     Empirical polynomial fit for a standard NACA submerged flush inlet 
     pressure recovery factor (eta_d) vs Mass Flow Ratio (MFR).
+    # NACA RM A7130 / NACA ACR 5120
     """
     mfr_clamped = max(0.01, min(mfr, 0.99)) # Passive limit guardrail
     eta = -1.1 * (mfr_clamped - 0.65)**2 + 0.85
