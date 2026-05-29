@@ -169,7 +169,7 @@ if __name__ == "__main__":
     Mach = 0.5
 
     # total heat rejected by systems into the bay
-    Q_BAY_LOAD_kW = 4500.
+    Q_BAY_LOAD_W = 4500.
     # Systems are rated up to this temperature
     T_SYSTEM_MAX_degC = 70.0
 
@@ -179,7 +179,7 @@ if __name__ == "__main__":
     p_inf, t_inf, _, _ = atmo(altitude_ft, dISA_K)
 
     sl_sim = size_bay_ventilation(
-        Q_BAY_LOAD_kW, t_inf, p_inf, Mach, Cp_exit, T_SYSTEM_MAX_degC
+        Q_BAY_LOAD_W, t_inf, p_inf, Mach, Cp_exit, T_SYSTEM_MAX_degC
     )
     
     if sl_sim["status"] == "Success":
