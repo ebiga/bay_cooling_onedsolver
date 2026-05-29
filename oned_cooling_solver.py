@@ -8,6 +8,18 @@ R_gas=287.05
 cp_air = 1005.0
 
 
+def atmo(altitude_ft, dISA_degC):
+    """
+    Plain vanilla ISA computer.
+    """
+    altitude_m = altitude_ft * 0.3048
+    p_Pa = 101325. * ( 1. - 0.000022558*altitude_m )**5.2559
+    T_K = 288.15 - 0.0065*altitude_m + dISA_degC
+    rho_kg_m3 = p_Pa / (R_gas * T_K)
+    mu_kg_ms = 0.00001716 * (T_K/273.15)**1.5 * (273.15+110.)/(T_K+110.)
+    return p_Pa, T_K, rho_kg_m3, mu_kg_ms
+
+
 def naca_pressure_recovery(mfr):
     """
     Empirical polynomial fit for a standard NACA submerged flush inlet 
@@ -150,11 +162,24 @@ def size_bay_ventilation(q_cooling, t_inf, p_inf, mach, cp_exit, t_max_celsius, 
 
 
 if __name__ == "__main__":
-    Q_BAY_LOAD = 4500.    # 4.5 kW total heat rejected by systems into the bay
-    T_SYSTEM_MAX = 70.0     # Systems are rated up to 70 °C maximum
+
+    # Flight conditions
+    altitude_ft = 0.
+    dISA_K = 0.
+    Mach = 0.5
+
+    # total heat rejected by systems into the bay
+    Q_BAY_LOAD_kW = 4500.
+    # Systems are rated up to this temperature
+    T_SYSTEM_MAX_degC = 70.0
+
+    # outlet pressure coefficient
+    Cp_exit = 0.1
     
+    p_inf, t_inf, _, _ = atmo(altitude_ft, dISA_K)
+
     sl_sim = size_bay_ventilation(
-        q_cooling=Q_BAY_LOAD, t_inf=288.15, p_inf=101325.0, mach=0.5, cp_exit=0.1, t_max_celsius=T_SYSTEM_MAX
+        Q_BAY_LOAD_kW, t_inf, p_inf, Mach, Cp_exit, T_SYSTEM_MAX_degC
     )
     
     if sl_sim["status"] == "Success":
