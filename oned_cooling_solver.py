@@ -82,25 +82,20 @@ def size_bay_ventilation(q_cooling, t_inf, p_inf, mach, cp_exit, t_max_celsius, 
     
     # 3. Fixed Compartment Exit Pressure Boundary
     p_static_2 = p_inf + cp_exit * qdin_inf
-    t_t_2 = t_max  # The air leaves at the maximum rated temperature limit
+    t_t_2 = t_max  # ASSUMPTION: The air leaves at the maximum rated temperature limit
     
     # 4. Define the Geometric Residual Function for Scipy
     def area_residual(x):
         a_throat_guess = x[0]
-
-        if a_throat_guess <= 1e-6:
-            return 1e6
             
-        a_exit = a_throat_guess  # Balanced duct area assumption
+        a_exit = a_throat_guess  # ASSUMPTION: Balanced duct area assumption
         
         # Calculate local MFR
         mfr = mdot / (rho_inf * v_inf * a_throat_guess)
-        if mfr >= 1.0:
-            return 1e6 * mfr  # Violates passive intake physics
             
         eta_d = naca_pressure_recovery(mfr)
         p_t_1 = p_inf + eta_d * (p_t_inf - p_inf)
-        t_t_1 = t_t_inf
+        t_t_1 = t_t_inf  # ASSUMPTION: no total temp losses at the inlet
         
         # Node 1 (Throat): Subsonic Static State
         m_1 = solve_throat_mach(mdot, a_throat_guess, p_t_1, t_t_1)
