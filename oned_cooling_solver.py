@@ -42,8 +42,7 @@ def solve_throat_mach(mfr_target_kg_m3, S_throat_m2, Ptot_Pa, Ttot_Pa):
     choking_constraint_b = Bounds( 0., 1. )
     choking_constraint_c = LinearConstraint( 1., 0., 1. )
     
-    opts = {"f_target": 1e-12, "tol": 1e-8}
-    res = minimize( throat_Mach_for_target_mfr, x0=[0.5], args=(mfr_target_kg_m3, S_throat_m2, Ptot_Pa, Ttot_Pa), method='L-BFGS-B', bounds=choking_constraint_b, constraints=choking_constraint_c, options=opts)
+    res = minimize( throat_Mach_for_target_mfr, x0=[0.5], args=(mfr_target_kg_m3, S_throat_m2, Ptot_Pa, Ttot_Pa), method='Powell', bounds=choking_constraint_b, constraints=choking_constraint_c)
     MM = res.x[0] + math.sqrt(res.fun)
 
     return MM
@@ -128,10 +127,11 @@ def size_bay_ventilation(q_cooling, t_inf, p_inf, mach, cp_exit, t_max_celsius, 
 
     # Solve for required area
     try:
-        throat_area_bounds = Bounds( 0.0001, 0.2 )
+        throat_area_bounds = Bounds( 0.001, 0.5 )
         
-        opts = {"f_target": 1e-12, "tol": 1e-8}
-        res = minimize( area_residual, x0=[0.1], method='L-BFGS-B', bounds=throat_area_bounds, options=opts)
+        a_throat_guess = mdot / (rho_inf * v_inf)
+
+        res = minimize( area_residual, x0=[a_throat_guess], method='Powell', bounds=throat_area_bounds)
         final_area = res.x[0]
 
         final_mfr = mdot / (rho_inf * v_inf * final_area)
