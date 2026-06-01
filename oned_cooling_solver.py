@@ -26,7 +26,8 @@ def naca_pressure_recovery(mfr):
     pressure recovery factor (eta_d) vs Mass Flow Ratio (MFR).
     # NACA RM A7130 / NACA ACR 5120
     """
-    mfr_clamped = max(0.01, min(mfr, 0.99)) # Passive limit guardrail
+
+    mfr_clamped = max(0., min(mfr, 1.))
     eta = -1.1 * (mfr_clamped - 0.65)**2 + 0.85
     return max(0.1, eta)
 
@@ -53,10 +54,9 @@ def solve_throat_mach(mfr_target_kg_m3, S_throat_m2, Ptot_Pa, Ttot_Pa):
         return (x[0] - M1)**2.
 
     choking_constraint_b = Bounds( 0., 1. )
-    choking_constraint_c = LinearConstraint( 1., 0., 1. )
     
-    res = minimize( throat_Mach_for_target_mfr, x0=[0.5], args=(mfr_target_kg_m3, S_throat_m2, Ptot_Pa, Ttot_Pa), method='Powell', bounds=choking_constraint_b, constraints=choking_constraint_c)
-    MM = res.x[0] + math.sqrt(res.fun)
+    res = minimize( throat_Mach_for_target_mfr, x0=[0.5], args=(mfr_target_kg_m3, S_throat_m2, Ptot_Pa, Ttot_Pa), method='L-BFGS-B', bounds=choking_constraint_b)
+    MM = res.x[0]
 
     return MM
 
