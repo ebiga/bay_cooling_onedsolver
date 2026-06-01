@@ -166,14 +166,14 @@ def size_bay_ventilation(q_cooling, t_inf, p_inf, mach, cp_exit, t_max_celsius, 
 if __name__ == "__main__":
 
     # Flight conditions
-    altitude_ft = 0.
-    dISA_K = 0.
-    Mach = 0.5
+    altitude_ft = 15000.
+    dISA_K = 28.
+    Mach = 0.2
 
     # total heat rejected by systems into the bay
-    Q_BAY_LOAD_W = 4500.
+    Q_BAY_LOAD_W = 1681.
     # Systems are rated up to this temperature
-    T_SYSTEM_MAX_degC = 70.0
+    T_SYSTEM_MAX_degC = 32.0
 
     # outlet pressure coefficient
     Cp_exit = 0.1
