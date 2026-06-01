@@ -1,6 +1,6 @@
 import math
-from scipy.optimize import root_scalar
-from scipy.optimize import minimize, LinearConstraint, Bounds
+
+from scipy.optimize import minimize, Bounds
 
 
 gamma=1.4
