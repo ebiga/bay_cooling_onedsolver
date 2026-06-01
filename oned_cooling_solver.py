@@ -140,9 +140,9 @@ def size_bay_ventilation(q_cooling, t_inf, p_inf, mach, cp_exit, t_max_celsius, 
         mfr_bounds = Bounds( 0.0001, 0.9999 )
 
         res = minimize( area_residual, x0=[0.5], method='L-BFGS-B', bounds=mfr_bounds)
-        final_area = res.x[0]
+        final_mfr = res.x[0]
 
-        final_mfr = mdot / (rho_inf * v_inf * final_area)
+        final_area = mdot / (rho_inf * v_inf * final_mfr)
         
         return {
             "status": "Success",
