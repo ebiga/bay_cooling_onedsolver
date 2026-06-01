@@ -55,7 +55,7 @@ def solve_throat_mach(mfr_target_kg_m3, S_throat_m2, Ptot_Pa, Ttot_Pa):
 
     choking_constraint_b = Bounds( 0., 1. )
     
-    res = minimize( throat_Mach_for_target_mfr, x0=[0.5], args=(mfr_target_kg_m3, S_throat_m2, Ptot_Pa, Ttot_Pa), method='L-BFGS-B', bounds=choking_constraint_b)
+    res = minimize( throat_Mach_for_target_mfr, x0=[0.5], args=(mfr_target_kg_m3, S_throat_m2, Ptot_Pa, Ttot_Pa), method='Powell', bounds=choking_constraint_b)
     MM = res.x[0]
 
     return MM
@@ -142,7 +142,7 @@ def size_bay_ventilation(q_cooling, t_inf, p_inf, mach, cp_exit, t_max_celsius, 
     try:
         mfr_bounds = Bounds( 0.0001, 0.9999 )
 
-        res = minimize( area_residual, x0=[0.5], method='L-BFGS-B', bounds=mfr_bounds)
+        res = minimize( area_residual, x0=[0.5], method='Powell', bounds=mfr_bounds)
         final_mfr = res.x[0]
 
         final_area = mdot / (rho_inf * v_inf * final_mfr)
@@ -153,7 +153,6 @@ def size_bay_ventilation(q_cooling, t_inf, p_inf, mach, cp_exit, t_max_celsius, 
             "dt_air": dt_allowed,
             "a_throat_cm2": final_area * 10000.0,
             "mfr": final_mfr,
-            "eta_d": naca_pressure_recovery(final_mfr)
         }
     except ValueError:
         return {
