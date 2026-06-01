@@ -97,14 +97,16 @@ def size_bay_ventilation(q_cooling, t_inf, p_inf, mach, cp_exit, t_max_celsius, 
     p_static_2 = p_inf + cp_exit * qdin_inf
     t_t_2 = t_max  # ASSUMPTION: The air leaves at the maximum rated temperature limit
     
-    # 4. Define the Geometric Residual Function for Scipy
+    # 4. Define the Geometric Residual Function
+    #_ This receives mfr instead of actual area cause it's more stable and more physically bound
     def area_residual(x):
-        a_throat_guess = x[0]
-            
-        a_exit = a_throat_guess  # ASSUMPTION: Balanced duct area assumption
-        
+
+        mfr = x[0]
+
         # Calculate local MFR
-        mfr = mdot / (rho_inf * v_inf * a_throat_guess)
+        a_throat_guess = mdot / (rho_inf * v_inf * mfr)
+
+        a_exit = a_throat_guess  # ASSUMPTION: Balanced duct area assumption
             
         eta_d = naca_pressure_recovery(mfr)
         p_t_1 = p_inf + eta_d * (p_t_inf - p_inf)
@@ -135,11 +137,9 @@ def size_bay_ventilation(q_cooling, t_inf, p_inf, mach, cp_exit, t_max_celsius, 
 
     # Solve for required area
     try:
-        throat_area_bounds = Bounds( 0.001, 0.5 )
-        
-        a_throat_guess = mdot / (rho_inf * v_inf)
+        mfr_bounds = Bounds( 0.0001, 0.9999 )
 
-        res = minimize( area_residual, x0=[a_throat_guess], method='Powell', bounds=throat_area_bounds)
+        res = minimize( area_residual, x0=[0.5], method='L-BFGS-B', bounds=mfr_bounds)
         final_area = res.x[0]
 
         final_mfr = mdot / (rho_inf * v_inf * final_area)
