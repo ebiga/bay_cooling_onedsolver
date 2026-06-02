@@ -106,17 +106,25 @@ def size_fire_zone_ventilation(bay_volume_m3, acpm, t_inf, p_inf, mach, cp_exit,
         dp_friction = k_sys * (0.5 * rho_static_1 * v_1**2)
         p_t_bay = p_t_1 - dp_friction
         
-        # DYNAMIC CD LOOP INTEGRATION ---
-        v_exit_nominal = mdot_target / (rho_static_1 * a_exit)
+        # Isentropic expansion from degraded bay total pressure to external static pressure
+        if p_t_bay > p_static_ext_exit:
+            rho_t_bay = p_t_bay / (R_gas * t_t_inf)
+            rho_exit = rho_t_bay * (p_static_ext_exit / p_t_bay)**(1.0 / gamma)
+        else:
+            # Fallback protection for unphysical intermediate solver steps
+            rho_exit = p_static_ext_exit / (R_gas * t_t_inf)
+            
+        v_exit_nominal = mdot_target / (rho_exit * a_exit)
         R_vel = v_exit_nominal / v_inf
         
         Cd = get_outlet_cd(outlet_type, R_vel, grill_porosity)
-        runtime_tracker["Cd"] = Cd
+        runtime_tracker["Cd"] = Cd  
         
         # Node 2 (Exit Drop Model via Discharge Coefficient)
         a_effective_exit = Cd * a_exit
-        dp_outlet = (mdot_target**2) / (2.0 * rho_static_1 * (a_effective_exit)**2)
-        
+        # Use the true corrected exit density for the dynamic backpressure delta P
+        dp_outlet = (mdot_target**2) / (2.0 * rho_exit * (a_effective_exit)**2)        
+
         # The internal pressure must equal external dump pressure plus exit restriction losses
         calculated_p_t_bay = p_static_ext_exit + dp_outlet
         
