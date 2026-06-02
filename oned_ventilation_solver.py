@@ -38,9 +38,9 @@ def solve_throat_mach(mfr_target_kg_m3, S_throat_m2, Ptot_Pa, Ttot_Pa):
 
 def get_outlet_cd(outlet_type, porosity=0.6):
     """Returns the discharge coefficient based on outlet selection."""
-    if outlet_type == "inverted_naca":
+    if outlet_type == "scoop":
         return 0.82
-    elif outlet_type == "parallel_sides":
+    elif outlet_type == "parallel":
         return 0.62
     elif outlet_type == "grill":
         return 0.62 * porosity
@@ -144,8 +144,8 @@ if __name__ == "__main__":
     p_inf, t_inf, _, _ = atmo(altitude_ft, dISA_K)
     
     outlets_to_test = [
-        {"type": "inverted_naca", "porosity": 1.0},
-        {"type": "parallel_sides", "porosity": 1.0},
+        {"type": "scoop", "porosity": 1.0},
+        {"type": "parallel", "porosity": 1.0},
         {"type": "grill", "porosity": 0.65},
         {"type": "grill", "porosity": 0.45}
     ]
