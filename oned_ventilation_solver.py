@@ -36,14 +36,22 @@ def solve_throat_mach(mfr_target_kg_m3, S_throat_m2, Ptot_Pa, Ttot_Pa):
     res = minimize(throat_Mach_for_target_mfr, x0=[0.2], args=(mfr_target_kg_m3, S_throat_m2, Ptot_Pa, Ttot_Pa), method='Powell', bounds=choking_constraint_b)
     return res.x[0]
 
-def get_outlet_cd(outlet_type, porosity=0.6):
-    """Returns the discharge coefficient based on outlet selection."""
-    if outlet_type == "scoop":
-        return 0.82
-    elif outlet_type == "parallel":
-        return 0.62
-    elif outlet_type == "grill":
-        return 0.62 * porosity
+def get_outlet_cd(outlet_type, R_vel, porosity=0.6):
+    """Returns the dynamic discharge coefficient adjusted for external crossflow."""
+    R_vel = max(0.001, R_vel)  # Protection against division-by-zero or static cases
+    
+    if outlet_type == "OutletInvertedScoop":
+        # Reference C: Hoerner Aft-Facing Extractor Scoop
+        return 0.80 - 0.05 * math.exp(-R_vel)
+    elif outlet_type == "OutletParallelRamp":
+        # Reference A: NACA TN 3924 Parallel Flush Slot
+        return 0.60 * (1.0 - 0.60 * math.exp(-1.8 * R_vel))
+    elif outlet_type == "OutletDivergentRamp":
+        # Reference B: ESDU 86001 Flush Divergent Ramp Outlet
+        return 0.70 * (1.0 - 0.45 * math.exp(-2.2 * R_vel))
+    elif outlet_type == "OutletGrill":
+        # Reference D: Idelchik Perforated Screen Interaction
+        return 0.62 * porosity * (1.0 - 0.55 * math.exp(-1.5 * R_vel))
     else:
         raise ValueError(f"Unknown outlet type: {outlet_type}")
 
@@ -71,8 +79,8 @@ def size_fire_zone_ventilation(bay_volume_m3, acpm, t_inf, p_inf, mach, cp_exit,
     vol_flow_rate_rps = (acpm / 60.0) * bay_volume_m3  # m^3/s
     mdot_target = rho_inf * vol_flow_rate_rps          # kg/s
     
-    # Fetch Discharge Coefficient for the selected outlet configuration
-    Cd = get_outlet_cd(outlet_type, grill_porosity)
+
+    runtime_tracker = {"Cd": 0.6}
     
     def area_residual(x):
         mfr = x[0]
@@ -98,8 +106,14 @@ def size_fire_zone_ventilation(bay_volume_m3, acpm, t_inf, p_inf, mach, cp_exit,
         dp_friction = k_sys * (0.5 * rho_static_1 * v_1**2)
         p_t_bay = p_t_1 - dp_friction
         
+        # DYNAMIC CD LOOP INTEGRATION ---
+        v_exit_nominal = mdot_target / (rho_static_1 * a_exit)
+        R_vel = v_exit_nominal / v_inf
+        
+        Cd = get_outlet_cd(outlet_type, R_vel, grill_porosity)
+        runtime_tracker["Cd"] = Cd
+        
         # Node 2 (Exit Drop Model via Discharge Coefficient)
-        # Delta P needed to force mass flow through the discharge coefficient restriction
         a_effective_exit = Cd * a_exit
         dp_outlet = (mdot_target**2) / (2.0 * rho_static_1 * (a_effective_exit)**2)
         
@@ -122,7 +136,7 @@ def size_fire_zone_ventilation(bay_volume_m3, acpm, t_inf, p_inf, mach, cp_exit,
             "vol_flow": vol_flow_rate_rps * 60.0, # m3/min
             "a_throat_cm2": final_area * 10000.0,
             "mfr": final_mfr,
-            "Cd_used": Cd
+            "Cd_used": runtime_tracker["Cd"]
         }
     except Exception:
         return {
@@ -132,22 +146,25 @@ def size_fire_zone_ventilation(bay_volume_m3, acpm, t_inf, p_inf, mach, cp_exit,
 
 if __name__ == "__main__":
     # Compartment Parameters
-    BAY_VOLUME_M3 = 2.4       # Example bay volume
-    TARGET_ACPM = 5.0         # Part 25.1187 target criteria
+    BAY_VOLUME_M3 = 2.4
+
+    # Part 25.1187 target criteria
+    TARGET_ACPM = 5.0
     
     # Environment & Flight parameters
     altitude_ft = 10000.
     dISA_K = 15.
     Mach = 0.25
-    Cp_exit = -0.1            # Located in a slight suction zone on the fuselage
+    Cp_exit = -0.1
     
     p_inf, t_inf, _, _ = atmo(altitude_ft, dISA_K)
     
     outlets_to_test = [
-        {"type": "scoop", "porosity": 1.0},
-        {"type": "parallel", "porosity": 1.0},
-        {"type": "grill", "porosity": 0.65},
-        {"type": "grill", "porosity": 0.45}
+        {"type": "OutletInvertedScoop", "porosity": 1.0},
+        {"type": "OutletParallelRamp", "porosity": 1.0},
+        {"type": "OutletDivergentRamp", "porosity": 1.0},
+        {"type": "OutletGrill", "porosity": 0.65},
+        {"type": "OutletGrill", "porosity": 0.45}
     ]
     
     print(f"--- Sizing Summary for Vol: {BAY_VOLUME_M3} m³ at {TARGET_ACPM} ACPM ---")
@@ -164,7 +181,7 @@ if __name__ == "__main__":
         )
         
         if res["status"] == "Success":
-            label = f"{outlet['type']} (Porosity: {outlet['porosity']})" if outlet['type'] == 'grill' else outlet['type']
+            label = f"{outlet['type']} (Porosity: {outlet['porosity']})" if 'Grill' in outlet['type'] else outlet['type']
             print(f"\nOutlet Type        : {label}")
             print(f"  Effective Cd      : {res['Cd_used']:.3f}")
             print(f"  Target Mass Flow  : {res['mdot']:.4f} kg/s ({res['vol_flow']:.2f} m³/min)")
