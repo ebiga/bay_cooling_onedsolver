@@ -82,13 +82,16 @@ def size_ventilation(mdot_target_kg_s, T_inf_K, p_inf_Pa, Mach, Cp_exit, outlet_
        
 
         # Node 2-B (Exit, Drop Model via Discharge Coefficient)
+        Tt_exit = T_max_K if T_max_K else Tt_inf
+
+        # Node 2-B (Exit, Drop Model via Discharge Coefficient)
         #_ Isentropic expansion from degraded bay total pressure to external static pressure
         if pt_bay > p_static_ext_exit:
-            rho_t_bay = pt_bay / (R_gas * Tt_inf)
+            rho_t_bay = pt_bay / (R_gas * Tt_exit)
             rho_exit = rho_t_bay * (p_static_ext_exit / pt_bay)**(1.0 / gamma)
         else:
             # Fallback protection for unphysical intermediate solver steps
-            rho_exit = p_static_ext_exit / (R_gas * Tt_inf)
+            rho_exit = p_static_ext_exit / (R_gas * Tt_exit)
             
         v_exit_nominal = mdot_target_kg_s / (rho_exit * a_exit)
         R_vel = v_exit_nominal / v_inf
