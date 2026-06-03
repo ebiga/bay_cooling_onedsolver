@@ -104,7 +104,7 @@ def size_ventilation(mdot_target_kg_s, T_inf_K, p_inf_Pa, Mach, Cp_exit, outlet_
         # THE CONVERGENCE RESIDUAL:
         # Energy balance requires that available bay pressure minus outlet drop matches the target exit plane state
         # Hard Physical Constraint: Available pressure must drive the flow out to ambient
-        error_pressure = ((pt_bay - dp_outlet - p_static_ext_exit) / p_static_ext_exit)**2
+        error_pressure = abs((pt_bay - dp_outlet - p_static_ext_exit) / p_static_ext_exit)
 
         error_naca_eff = ((eta_d - 0.85)/0.85)**2.
 
