@@ -1,59 +1,10 @@
 import math
+
 from scipy.optimize import minimize, Bounds
 
-gamma = 1.4
-R_gas = 287.05
-cp_air = 1005.0
+from auxfunctions import *
+from InletOutletModels import *
 
-def atmo(altitude_ft, dISA_degC):
-    """Plain vanilla ISA computer."""
-    altitude_m = altitude_ft * 0.3048
-    p_Pa = 101325. * (1. - 0.000022558 * altitude_m)**5.2559
-    T_K = 288.15 - 0.0065 * altitude_m + dISA_degC
-    rho_kg_m3 = p_Pa / (R_gas * T_K)
-    mu_kg_ms = 0.00001716 * (T_K / 273.15)**1.5 * (273.15 + 110.) / (T_K + 110.)
-    return p_Pa, T_K, rho_kg_m3, mu_kg_ms
-
-def naca_pressure_recovery(mfr):
-    """Empirical fit for standard NACA submerged flush inlet pressure recovery."""
-    mfr_clamped = max(0., min(mfr, 1.))
-    eta = -1.1 * (mfr_clamped - 0.65)**2 + 0.85
-    return max(0.1, eta)
-
-def solve_throat_mach(mfr_target_kg_m3, S_throat_m2, Ptot_Pa, Ttot_Pa):
-    """Finds the true subsonic static Mach number at the throat."""
-    def throat_Mach_for_target_mfr(x, mfr_target_kg_m3, S_throat_m2, Ptot_Pa, Ttot_Pa):
-        gamm1 = gamma - 1.
-        rhotot_kg_m3 = Ptot_Pa / (R_gas * Ttot_Pa)
-        isenM = 1. + 0.5 * gamm1 * x[0]**2.
-
-        p1_Pa = Ptot_Pa / (isenM**(gamma / gamm1))
-        rho1_kg_m3 = rhotot_kg_m3 / (isenM**(1. / gamm1))
-        M1 = mfr_target_kg_m3 / (S_throat_m2 * math.sqrt(gamma * p1_Pa * rho1_kg_m3))
-        return (x[0] - M1)**2.
-
-    choking_constraint_b = Bounds(0., 1.)
-    res = minimize(throat_Mach_for_target_mfr, x0=[0.2], args=(mfr_target_kg_m3, S_throat_m2, Ptot_Pa, Ttot_Pa), method='Powell', bounds=choking_constraint_b)
-    return res.x[0]
-
-def get_outlet_cd(outlet_type, R_vel, porosity=0.6):
-    """Returns the dynamic discharge coefficient adjusted for external crossflow."""
-    R_vel = max(0.001, R_vel)  # Protection against division-by-zero or static cases
-    
-    if outlet_type == "OutletInvertedScoop":
-        # Reference C: Hoerner Aft-Facing Extractor Scoop
-        return 0.80 - 0.05 * math.exp(-R_vel)
-    elif outlet_type == "OutletParallelRamp":
-        # Reference A: NACA TN 3924 Parallel Flush Slot
-        return 0.60 * (1.0 - 0.60 * math.exp(-1.8 * R_vel))
-    elif outlet_type == "OutletDivergentRamp":
-        # Reference B: ESDU 86001 Flush Divergent Ramp Outlet
-        return 0.70 * (1.0 - 0.45 * math.exp(-2.2 * R_vel))
-    elif outlet_type == "OutletGrill":
-        # Reference D: Idelchik Perforated Screen Interaction
-        return 0.62 * porosity * (1.0 - 0.55 * math.exp(-1.5 * R_vel))
-    else:
-        raise ValueError(f"Unknown outlet type: {outlet_type}")
 
 def size_fire_zone_ventilation(bay_volume_m3, acpm, t_inf, p_inf, mach, cp_exit, outlet_type, grill_porosity=0.6, k_sys=1.5):
     """
@@ -151,6 +102,9 @@ def size_fire_zone_ventilation(bay_volume_m3, acpm, t_inf, p_inf, mach, cp_exit,
             "status": "Failed",
             "reason": "Solver execution failed. Ram air pressure cannot drive this mass flow through chosen outlet restriction."
         }
+
+
+
 
 if __name__ == "__main__":
     # Compartment Parameters
