@@ -168,14 +168,14 @@ if __name__ == "__main__":
         vol_flow_rate_rps = (TARGET_ACPM / 60.0) * BAY_VOLUME_M3
         mdot_target = rho_inf * vol_flow_rate_rps
 
-        sl_sim = size_ventilation(mdot_target, T_inf, p_inf, Mach, Cp_exit, outlet_to_test)
+        res = size_ventilation(mdot_target, T_inf, p_inf, Mach, Cp_exit, outlet_to_test)
 
-        if sl_sim["status"] == "Success":
-            print(f"  Calculated Target mdot   : {sl_sim['mdot']:.4f} kg/s")
-            print(f"  REQUIRED NACA Throat Area: {sl_sim['a_throat_cm2']:.2f} cm²")
-            print(f"  Operating MFR            : {sl_sim['mfr']:.3f}")
+        if res["status"] == "Success":
+            print(f"  Target Mass Flow : {res['mdot']:.4f} kg/s")
+            print(f"  NACA Throat Area : {res['a_throat_cm2']:.2f} cm²")
+            print(f"  Operating MFR    : {res['mfr']:.3f}")
         else:
-            print(f"  Sizing Failed: {sl_sim.get('reason')}")
+            print(f"  Sizing Failed: {res.get('reason')}")
 
 
     if if_Solve_Cooling:
@@ -183,13 +183,13 @@ if __name__ == "__main__":
         Tt_inf = T_inf * (1.0 + gamm2 * Mach**2)
 
         dT_allowed = T_max - Tt_inf
-        mdot = Q_BAY_LOAD_W / (cp_air * dT_allowed)
+        mdot_target = Q_BAY_LOAD_W / (cp_air * dT_allowed)
 
         res = size_ventilation(mdot_target, T_inf, p_inf, Mach, Cp_exit, outlet_to_test, T_max)
         
         if res["status"] == "Success":
-            print(f"  Target Mass Flow  : {res['mdot']:.4f} kg/s ({res['vol_flow']:.2f} m³/min)")
-            print(f"  Req. Throat Area  : {res['a_throat_cm2']:.2f} cm²")
-            print(f"  Operating MFR     : {res['mfr']:.3f}")
+            print(f"  Target Mass Flow : {res['mdot']:.4f} kg/s")
+            print(f"  NACA Throat Area : {res['a_throat_cm2']:.2f} cm²")
+            print(f"  Operating MFR    : {res['mfr']:.3f}")
         else:
-            print(f"  Sizing Failed: {sl_sim.get('reason')}")
+            print(f"  Sizing Failed: {res.get('reason')}")
