@@ -134,9 +134,12 @@ def size_bay_ventilation(q_cooling, t_inf, p_inf, mach, cp_exit, t_max_celsius, 
         
         calculated_p_t_2 = p_t_1 - dp_friction - dp_thermal
 
-        error = ((calculated_p_t_2 - p_t_2)/p_t_1)**2.
+        error_pt_exit = abs((calculated_p_t_2 - p_t_2)/p_t_2)
+        error_naca_eff = ((eta_d - 0.85)/0.85)**2.
 
-        return error
+        print(a_throat_guess, calculated_p_t_2, p_t_2, error_pt_exit, error_naca_eff)
+
+        return error_pt_exit + error_naca_eff
 
     # Solve for required area
     try:
