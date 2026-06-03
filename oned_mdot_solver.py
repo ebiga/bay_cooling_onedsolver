@@ -38,18 +38,18 @@ def size_ventilation(mdot_target_kg_s, T_inf_K, p_inf_Pa, Mach, Cp_exit, outlet_
         mfr = x[0]
         
         # Calculate target throat area base on current MFR iteration
-        a_throat_guess = mdot_target / (rho_inf * v_inf * mfr)
+        a_throat_guess = mdot_target_kg_s / (rho_inf * v_inf * mfr)
         
         # ASSUMPTION: Balanced layout footprint where Area_exit == Area_throat
         a_exit = a_throat_guess 
         
         # Dynamic Inlet Total Pressure Recovery
         eta_d = naca_pressure_recovery(mfr)
-        pt_1 = p_inf + eta_d * (pt_inf - p_inf)
+        pt_1 = p_inf_Pa + eta_d * (pt_inf - p_inf_Pa)
         Tt_1 = Tt_inf  # ASSUMPTION: no total temp losses at the inlet
         
         # Node 1 (Throat State)
-        m_1 = solve_throat_mach(mdot_target, a_throat_guess, pt_1, Tt_1)
+        m_1 = solve_throat_mach(mdot_target_kg_s, a_throat_guess, pt_1, Tt_1)
         t_static_1 = Tt_1 / (1.0 + gamm2 * m_1**2)
         p_static_1 = pt_1 / (1.0 + gamm2 * m_1**2)**(gamma/gamm1)
         rho_static_1 = p_static_1 / (R_gas * t_static_1)
@@ -64,17 +64,17 @@ def size_ventilation(mdot_target_kg_s, T_inf_K, p_inf_Pa, Mach, Cp_exit, outlet_
         #_ Static State via Quadratic Energy Equation
         dp_thermal = 0.
 
-        if if_Solve_Cooling:
-            coeff_a = (R_gas * mdot_target)**2 / (2.0 * cp_air * (p_static_2 * a_exit)**2)
+        if T_max_K:
+            coeff_a = (R_gas * mdot_target_kg_s)**2 / (2.0 * cp_air * (p_static_2 * a_exit)**2)
             t_static_2 = (-1.0 + math.sqrt(1.0 + 4.0 * coeff_a * Tt_2)) / (2.0 * coeff_a)
             
             rho_static_2 = p_static_2 / (R_gas * t_static_2)
-            v_2 = mdot_target / (rho_static_2 * a_exit)
+            v_2 = mdot_target_kg_s / (rho_static_2 * a_exit)
             m_2 = v_2 / math.sqrt(gamma * R_gas * t_static_2)
             pt_2 = p_static_2 * (1.0 + gamm2 * m_2**2)**(gamma/gamm1)
             
             # Losses: Thermal Expansion Rayleigh Penalty
-            dp_thermal = (mdot_target**2 / a_throat_guess**2) * ((1.0 / rho_static_2) - (1.0 / rho_static_1))
+            dp_thermal = (mdot_target_kg_s**2 / a_throat_guess**2) * ((1.0 / rho_static_2) - (1.0 / rho_static_1))
 
 
         # Bay total pressure with losses
@@ -90,7 +90,7 @@ def size_ventilation(mdot_target_kg_s, T_inf_K, p_inf_Pa, Mach, Cp_exit, outlet_
             # Fallback protection for unphysical intermediate solver steps
             rho_exit = p_static_ext_exit / (R_gas * Tt_inf)
             
-        v_exit_nominal = mdot_target / (rho_exit * a_exit)
+        v_exit_nominal = mdot_target_kg_s / (rho_exit * a_exit)
         R_vel = v_exit_nominal / v_inf
         
         # Nozzle effective discharge area
@@ -98,7 +98,7 @@ def size_ventilation(mdot_target_kg_s, T_inf_K, p_inf_Pa, Mach, Cp_exit, outlet_
         a_effective_exit = Cd * a_exit
 
         # Use the true corrected exit density for the dynamic backpressure delta P
-        dp_outlet = (mdot_target**2) / (2.0 * rho_exit * (a_effective_exit)**2)        
+        dp_outlet = (mdot_target_kg_s**2) / (2.0 * rho_exit * (a_effective_exit)**2)        
 
 
         # THE CONVERGENCE RESIDUAL:
@@ -117,11 +117,11 @@ def size_ventilation(mdot_target_kg_s, T_inf_K, p_inf_Pa, Mach, Cp_exit, outlet_
 
         res = minimize( area_residual, x0=[0.5], method='Powell', bounds=mfr_bounds)
         final_mfr = res.x[0]
-        final_area = mdot_target / (rho_inf * v_inf * final_mfr)
+        final_area = mdot_target_kg_s / (rho_inf * v_inf * final_mfr)
         
         return {
             "status": "Success",
-            "mdot": mdot_target,
+            "mdot": mdot_target_kg_s,
             "a_throat_cm2": final_area * 10000.0,
             "mfr": final_mfr,
         }
