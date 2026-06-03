@@ -3,9 +3,12 @@ import math
 from scipy.optimize import minimize, Bounds
 
 
-gamma=1.4
-R_gas=287.05
+gamma  = 1.4
+R_gas  = 287.05
 cp_air = 1005.0
+
+gamm1 = gamma - 1.
+gamm2 = gamm1 / 2.
 
 
 
@@ -30,7 +33,6 @@ def solve_throat_mach(mfr_target_kg_m3, S_throat_m2, Ptot_Pa, Ttot_Pa):
     """
 
     def throat_Mach_for_target_mfr(x, mfr_target_kg_m3, S_throat_m2, Ptot_Pa, Ttot_Pa):
-        gamm1 = gamma - 1.
 
         # define freestream total properties
         rhotot_kg_m3 = Ptot_Pa / (R_gas * Ttot_Pa)

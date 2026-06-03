@@ -11,9 +11,7 @@ def size_fire_zone_ventilation(bay_volume_m3, acpm, t_inf, p_inf, mach, cp_exit,
     Sizes the required NACA inlet throat area to satisfy a minimum 
     Air Changes Per Minute (ACPM) requirement according to Part 25.1187.
     """
-    gamm1 = gamma - 1.
-    gamm2 = gamm1 / 2.
-    
+
     # 1. Freestream Aero Conditions
     a_inf = math.sqrt(gamma * R_gas * t_inf)
     v_inf = mach * a_inf

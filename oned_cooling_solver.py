@@ -11,9 +11,7 @@ def size_bay_ventilation(q_cooling, t_inf, p_inf, mach, cp_exit, t_max_celsius, 
     Sizes the required NACA inlet throat area for an equipment bay based on 
     the maximum rated component temperature boundary condition.
     """
-    gamm1 = gamma - 1.
-    gamm2 = gamm1/2.
-    
+
     # Convert system limit to Kelvin
     t_max = t_max_celsius + 273.15
     
