@@ -45,7 +45,7 @@ def size_ventilation(mdot_target_kg_s, T_inf_K, p_inf_Pa, Mach, Cp_exit, outlet_
         
         # Dynamic Inlet Total Pressure Recovery
         eta_d = naca_pressure_recovery(mfr)
-        pt_1 = p_inf_Pa + eta_d * (pt_inf - p_inf_Pa)
+        pt_1 = p_inf_Pa + eta_d * qdin_inf
         Tt_1 = Tt_inf  # ASSUMPTION: no total temp losses at the inlet
         
         # Node 1 (Throat State)
@@ -101,13 +101,13 @@ def size_ventilation(mdot_target_kg_s, T_inf_K, p_inf_Pa, Mach, Cp_exit, outlet_
         a_effective_exit = Cd * a_exit
 
         # Use the true corrected exit density for the dynamic backpressure delta P
-        dp_outlet = (mdot_target_kg_s**2) / (2.0 * rho_exit * (a_effective_exit)**2)        
+        dp_outlet = (mdot_target_kg_s**2) / (2.0 * rho_exit * (a_effective_exit)**2)
 
 
         # THE CONVERGENCE RESIDUAL:
         # Energy balance requires that available bay pressure minus outlet drop matches the target exit plane state
         # Hard Physical Constraint: Available pressure must drive the flow out to ambient
-        error_pressure = abs((pt_bay - dp_outlet - p_static_ext_exit) / p_static_ext_exit)
+        error_pressure = ((pt_bay - dp_outlet - p_static_ext_exit) / p_static_ext_exit)**2.
 
         error_naca_eff = ((eta_d - 0.85)/0.85)**2.
 
