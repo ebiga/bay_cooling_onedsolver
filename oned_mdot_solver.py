@@ -106,13 +106,15 @@ def size_ventilation(mdot_target_kg_s, T_inf_K, p_inf_Pa, Mach, Cp_exit, outlet_
 
         error_naca_eff = ((eta_d - 0.85)/0.85)**2.
 
+        print(f"mfr: {mfr:.3e}, pressure err: {error_pressure:.3e}, naca eff err: {error_naca_eff:.3e}, outlet eff: {Cd:.3f}")
+
         return error_pressure + error_naca_eff
 
 
     # Solve for required area
     try:
         mfr_bounds = ( 0.1, 1. )
-        aexit_bounds = ( 0.1, 1. )
+        aexit_bounds = ( 0.2, 2. )
 
         res = minimize( area_residual, x0=[0.5, 1.], method='Powell', bounds=[mfr_bounds, aexit_bounds])
 
