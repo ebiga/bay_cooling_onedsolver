@@ -73,7 +73,10 @@ def size_ventilation(mdot_target_kg_s, T_inf_K, p_inf_Pa, Mach, Cp_exit, outlet_
             pt_2 = p_static_2 * (1.0 + gamm2 * m_2**2)**(gamma/gamm1)
             
             # Losses: Thermal Expansion Rayleigh Penalty
-            dp_thermal = (mdot_target_kg_s**2 / a_throat_guess**2) * ((1.0 / rho_static_2) - (1.0 / rho_static_1))
+            dp_thermal = mdot_target_kg_s**2 * (
+                            1.0 / (rho_static_2 * a_exit**2) - 
+                            1.0 / (rho_static_1 * a_throat_guess**2)
+                        )
 
 
         # Bay total pressure with losses
