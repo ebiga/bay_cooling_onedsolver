@@ -40,14 +40,13 @@ def size_ventilation(mdot_target_kg_s, T_inf_K, p_inf_Pa, Mach, Cp_exit, outlet_
         # Calculate target throat area base on current MFR iteration
         a_throat_guess = mdot_target_kg_s / (rho_inf * v_inf * mfr)
         
-        # ASSUMPTION: Balanced layout footprint where Area_exit == Area_throat
-        a_exit = a_throat_guess 
+        a_exit = a_throat_guess * x[1]
         
         # Dynamic Inlet Total Pressure Recovery
         eta_d = naca_pressure_recovery(mfr)
         pt_1 = p_inf_Pa + eta_d * qdin_inf
         Tt_1 = Tt_inf  # ASSUMPTION: no total temp losses at the inlet
-        
+
         # Node 1 (Throat State)
         m_1 = solve_throat_mach(mdot_target_kg_s, a_throat_guess, pt_1, Tt_1)
         t_static_1 = Tt_1 / (1.0 + gamm2 * m_1**2)
@@ -112,16 +111,21 @@ def size_ventilation(mdot_target_kg_s, T_inf_K, p_inf_Pa, Mach, Cp_exit, outlet_
 
     # Solve for required area
     try:
-        mfr_bounds = Bounds( 0.0001, 0.9999 )
+        mfr_bounds = ( 0.1, 1. )
+        aexit_bounds = ( 0.1, 1. )
 
-        res = minimize( area_residual, x0=[0.5], method='Powell', bounds=mfr_bounds)
+        res = minimize( area_residual, x0=[0.5, 1.], method='Powell', bounds=[mfr_bounds, aexit_bounds])
+
         final_mfr = res.x[0]
-        final_area = mdot_target_kg_s / (rho_inf * v_inf * final_mfr)
+
+        inlet__area = mdot_target_kg_s / (rho_inf * v_inf * final_mfr)
+        outlet_area = res.x[1] * inlet__area
         
         return {
             "status": "Success",
             "mdot": mdot_target_kg_s,
-            "a_throat_cm2": final_area * 10000.0,
+            "inlet__area_cm2": inlet__area * 10000.0,
+            "outlet_area_cm2": outlet_area * 10000.0,
             "mfr": final_mfr,
         }
     except Exception:
@@ -158,7 +162,7 @@ if __name__ == "__main__":
     T_SYSTEM_MAX_degC = 32.0
 
     # Outlet exit pressure
-    Cp_exit = -0.1
+    Cp_exit = 0.
     outlet_to_test = "OutletParallelRamp"
 
 
@@ -169,13 +173,6 @@ if __name__ == "__main__":
 
         res = size_ventilation(mdot_target, T_inf, p_inf, Mach, Cp_exit, outlet_to_test)
 
-        if res["status"] == "Success":
-            print(f"  Target Mass Flow : {res['mdot']:.4f} kg/s")
-            print(f"  NACA Throat Area : {res['a_throat_cm2']:.2f} cm²")
-            print(f"  Operating MFR    : {res['mfr']:.3f}")
-        else:
-            print(f"  Sizing Failed: {res.get('reason')}")
-
 
     if if_Solve_Cooling:
         T_max = T_SYSTEM_MAX_degC + 273.15
@@ -185,10 +182,12 @@ if __name__ == "__main__":
         mdot_target = Q_BAY_LOAD_W / (cp_air * dT_allowed)
 
         res = size_ventilation(mdot_target, T_inf, p_inf, Mach, Cp_exit, outlet_to_test, T_max)
-        
-        if res["status"] == "Success":
-            print(f"  Target Mass Flow : {res['mdot']:.4f} kg/s")
-            print(f"  NACA Throat Area : {res['a_throat_cm2']:.2f} cm²")
-            print(f"  Operating MFR    : {res['mfr']:.3f}")
-        else:
-            print(f"  Sizing Failed: {res.get('reason')}")
+
+
+    if res["status"] == "Success":
+        print(f"  Target Mass Flow : {res['mdot']:.4f} kg/s")
+        print(f"  Throat Area, Inlet  : {res['inlet__area_cm2']:.2f} cm²")
+        print(f"  Throat Area, Outlet : {res['outlet_area_cm2']:.2f} cm²")
+        print(f"  Operating MFR    : {res['mfr']:.3f}")
+    else:
+        print(f"  Sizing Failed: {res.get('reason')}")
