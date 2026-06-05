@@ -25,11 +25,6 @@ def size_ventilation(mdot_target_kg_s, T_inf_K, p_inf_Pa, Mach, Cp_exit, outlet_
     # External static pressure at the exit dump location
     p_static_ext_exit = p_inf_Pa + Cp_exit * qdin_inf
 
-
-    # Fixed Compartment Exit Pressure Boundary
-    p_static_2 = p_static_ext_exit
-    Tt_2 = T_max_K  # ASSUMPTION: The air leaves at the maximum rated temperature limit
-
     
     # Define the Geometric Residual Function
     #_ This receives mfr instead of actual area cause it's more stable and more physically bound
@@ -60,31 +55,16 @@ def size_ventilation(mdot_target_kg_s, T_inf_K, p_inf_Pa, Mach, Cp_exit, outlet_
 
 
         # Node 2-A (Exit, Thermal demand)
-        #_ Static State via Quadratic Energy Equation
-        dp_thermal = 0.
-
-        if T_max_K:
-            coeff_a = (R_gas * mdot_target_kg_s)**2 / (2.0 * cp_air * (p_static_2 * a_exit)**2)
-            t_static_2 = (-1.0 + math.sqrt(1.0 + 4.0 * coeff_a * Tt_2)) / (2.0 * coeff_a)
-            
-            rho_static_2 = p_static_2 / (R_gas * t_static_2)
-            v_2 = mdot_target_kg_s / (rho_static_2 * a_exit)
-            m_2 = v_2 / math.sqrt(gamma * R_gas * t_static_2)
-            pt_2 = p_static_2 * (1.0 + gamm2 * m_2**2)**(gamma/gamm1)
-            
-            # Losses: Thermal Expansion Rayleigh Penalty
-            dp_thermal = mdot_target_kg_s**2 * (
-                            1.0 / (rho_static_2 * a_exit**2) - 
-                            1.0 / (rho_static_1 * a_throat_guess**2)
-                        )
-
+        # Assume equipment heat raises total temperature but does not
+        # directly impose a total-pressure penalty.
+        Tt_bay = T_max_K if T_max_K else Tt_inf
 
         # Bay total pressure with losses
-        pt_bay = pt_1 - dp_friction - dp_thermal
+        pt_bay = pt_1 - dp_friction
        
 
         # Node 2-B (Exit, Drop Model via Discharge Coefficient)
-        Tt_exit = T_max_K if T_max_K else Tt_inf
+        Tt_exit = Tt_bay
 
         # Node 2-B (Exit, Drop Model via Discharge Coefficient)
         #_ Isentropic expansion from degraded bay total pressure to external static pressure
