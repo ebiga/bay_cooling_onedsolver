@@ -97,7 +97,7 @@ def size_ventilation(mdot_target_kg_s, T_inf_K, p_inf_Pa, Mach, Cp_exit, outlet_
     # Solve for required area
     try:
         mfr_bounds = ( 0.1, 1. )
-        aexit_bounds = ( 0.2, 2. )
+        aexit_bounds = ( 0.5, 6. )
 
         res = minimize( area_residual, x0=[0.5, 1.], method='Powell', bounds=[mfr_bounds, aexit_bounds])
 
