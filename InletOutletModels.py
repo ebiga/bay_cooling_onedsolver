@@ -2,7 +2,12 @@ import math
 
 
 def naca_pressure_recovery(mfr):
-    """Empirical fit for standard NACA submerged flush inlet pressure recovery."""
+    """
+    Empirical fit for standard NACA submerged flush inlet pressure recovery.
+    Based on the classics, NACA RM A7I30 / NACA ACR 5120
+    eta is defined based on dynamic pressure recovery:
+        Ptot_recovered = Ps + eta*(Ptot_inf - Ps_inf)
+    """
     mfr_clamped = max(0., min(mfr, 1.))
     eta = -1.1 * (mfr_clamped - 0.65)**2 + 0.85
 
@@ -10,7 +15,13 @@ def naca_pressure_recovery(mfr):
 
 
 def get_outlet_cd(outlet_type, R_vel, porosity=0.6):
-    """Returns the dynamic discharge coefficient adjusted for external crossflow."""
+    """
+    Returns the dynamic discharge coefficient adjusted for external crossflow.
+    The discharge coefficient is defined on exit area correction:
+        Area_actual = Area_ideal * Cd
+    dependent on the exit velocity ratio
+        R = V_exit / V_inf
+    """
     R_vel = max(0.001, R_vel)
     
     if outlet_type == "OutletInvertedScoop":
