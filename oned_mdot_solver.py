@@ -97,7 +97,7 @@ def size_ventilation(mdot_target_kg_s, T_inf_K, p_inf_Pa, Mach, Cp_exit, outlet_
     # Solve for required area
     try:
         mfr_bounds = ( 0.1, 1. )
-        aexit_bounds = ( 0.2, 2. )
+        aexit_bounds = ( 0.5, 6. )
 
         res = minimize( area_residual, x0=[0.5, 1.], method='Powell', bounds=[mfr_bounds, aexit_bounds])
 
@@ -122,42 +122,34 @@ def size_ventilation(mdot_target_kg_s, T_inf_K, p_inf_Pa, Mach, Cp_exit, outlet_
 
 
 
-if __name__ == "__main__":
+def run_case(
+    altitude_ft,
+    dISA_K,
+    Mach,
+    BAY_VOLUME_M3,
+    TARGET_ACPM,
+    Q_BAY_LOAD_W,
+    T_SYSTEM_MAX_degC,
+    Cp_exit,
+    outlet_to_test,
+    if_Solve_Ventilation=True,
+    if_Solve_Cooling=False,
+):
 
-    if_Solve_Ventilation = True
-    if_Solve_Cooling = False
-
-    # Environment & Flight parameters
-    altitude_ft = 10000.
-    dISA_K = 15.
-    Mach = 0.25
-    
     p_inf, T_inf, rho_inf, _ = atmo(altitude_ft, dISA_K)
 
-
-    # SYSTEM PARAMETERS
-    # Compartment Parameters
-    BAY_VOLUME_M3 = 2.4
-    # Part 25.1187 target criteria
-    TARGET_ACPM = 5.0
-
-    # total heat rejected by systems into the bay
-    Q_BAY_LOAD_W = 1681.
-    # Systems are rated up to this temperature
-    T_SYSTEM_MAX_degC = 32.0
-
-    # Outlet exit pressure
-    Cp_exit = 0.
-    outlet_to_test = "OutletParallelRamp"
-
-
-    # massflow rate demands
     if if_Solve_Ventilation:
         vol_flow_rate_rps = (TARGET_ACPM / 60.0) * BAY_VOLUME_M3
         mdot_target = rho_inf * vol_flow_rate_rps
 
-        res = size_ventilation(mdot_target, T_inf, p_inf, Mach, Cp_exit, outlet_to_test)
-
+        res = size_ventilation(
+            mdot_target,
+            T_inf,
+            p_inf,
+            Mach,
+            Cp_exit,
+            outlet_to_test
+        )
 
     if if_Solve_Cooling:
         T_max = T_SYSTEM_MAX_degC + 273.15
@@ -166,8 +158,34 @@ if __name__ == "__main__":
         dT_allowed = T_max - Tt_inf
         mdot_target = Q_BAY_LOAD_W / (cp_air * dT_allowed)
 
-        res = size_ventilation(mdot_target, T_inf, p_inf, Mach, Cp_exit, outlet_to_test, T_max)
+        res = size_ventilation(
+            mdot_target,
+            T_inf,
+            p_inf,
+            Mach,
+            Cp_exit,
+            outlet_to_test,
+            T_max
+        )
 
+    return res
+
+
+if __name__ == "__main__":
+
+    res = run_case(
+        altitude_ft=10000.,
+        dISA_K=15.,
+        Mach=0.25,
+        BAY_VOLUME_M3=2.4,
+        TARGET_ACPM=5.0,
+        Q_BAY_LOAD_W=1681.,
+        T_SYSTEM_MAX_degC=32.0,
+        Cp_exit=0.,
+        outlet_to_test="OutletParallelRamp",
+        if_Solve_Ventilation=True,
+        if_Solve_Cooling=False,
+    )
 
     if res["status"] == "Success":
         print(f"  Target Mass Flow : {res['mdot']:.4f} kg/s")
