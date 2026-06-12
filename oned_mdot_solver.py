@@ -85,9 +85,9 @@ def size_ventilation(mdot_target_kg_s, T_inf_K, p_inf_Pa, Mach, Cp_exit, outlet_
         # THE CONVERGENCE RESIDUAL:
         # Energy balance requires that available bay pressure minus outlet drop matches the target exit plane state
         # Hard Physical Constraint: Available pressure must drive the flow out to ambient
-        error_pressure = ((pt_bay - dp_outlet - p_static_ext_exit) / p_static_ext_exit)**2.
+        error_pressure = abs((pt_bay - dp_outlet - p_static_ext_exit) / p_static_ext_exit)
 
-        error_naca_eff = ((eta_d - 0.85)/0.85)**2.
+        error_naca_eff = abs((eta_d - 0.85)/0.85)
 
         print(f"mfr: {mfr:.3e}, pressure err: {error_pressure:.3e}, naca eff err: {error_naca_eff:.3e}, outlet eff: {Cd:.3f}")
 
@@ -97,7 +97,7 @@ def size_ventilation(mdot_target_kg_s, T_inf_K, p_inf_Pa, Mach, Cp_exit, outlet_
     # Solve for required area
     try:
         mfr_bounds = ( 0.1, 1. )
-        aexit_bounds = ( 0.5, 6. )
+        aexit_bounds = ( 0.5, 10. )
 
         res = minimize( area_residual, x0=[0.5, 1.], method='Powell', bounds=[mfr_bounds, aexit_bounds])
 
