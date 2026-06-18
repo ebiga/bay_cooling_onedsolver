@@ -8,7 +8,8 @@ from InletOutletModels import *
 
 def size_ventilation(mdot_target_kg_s, T_inf_K, p_inf_Pa, Mach, Cp_exit, outlet_type, T_max_K=None, k_sys=1.5):
     """
-    Sizes the required NACA inlet throat area to satisfy a target mfr and systems requirements: cooling or ventilation.
+    Sizes the required NACA inlet throat area to satisfy a target mfr and systems requirements.
+    Calculates ram and spillage drag inline to support drag-targeted optimization routines.
     """
     
     # Freestream Aerodynamics & Stagnation States
@@ -25,9 +26,13 @@ def size_ventilation(mdot_target_kg_s, T_inf_K, p_inf_Pa, Mach, Cp_exit, outlet_
     # External static pressure at the exit dump location
     p_static_ext_exit = p_inf_Pa + Cp_exit * qdin_inf
 
+    # Local state tracking dictionary to capture the optimizer's current metrics
+    state_tracker = {
+        "drag_ram": 0.0,
+        "drag_spillage": 0.0,
+        "drag_total": 0.0
+    }
     
-    # Define the Geometric Residual Function
-    #_ This receives mfr instead of actual area cause it's more stable and more physically bound
     def area_residual(x):
 
         mfr = x[0]
@@ -38,7 +43,8 @@ def size_ventilation(mdot_target_kg_s, T_inf_K, p_inf_Pa, Mach, Cp_exit, outlet_
         a_exit = a_throat_guess * x[1]
         
         # Dynamic Inlet Total Pressure Recovery
-        eta_d = naca_pressure_recovery(mfr)
+        eta_d, Cd_spill = naca_pressure_recovery(mfr)
+
         pt_1 = p_inf_Pa + eta_d * qdin_inf
         Tt_1 = Tt_inf  # ASSUMPTION: no total temp losses at the inlet
 
@@ -66,7 +72,6 @@ def size_ventilation(mdot_target_kg_s, T_inf_K, p_inf_Pa, Mach, Cp_exit, outlet_
         # Node 2-B (Exit, Drop Model via Discharge Coefficient)
         Tt_exit = Tt_bay
 
-        # Node 2-B (Exit, Drop Model via Discharge Coefficient)
         #_ Isentropic expansion from degraded bay total pressure to external static pressure
         rho_t_bay = max(pt_bay, p_static_ext_exit) / (R_gas * Tt_exit)
         rho_exit = rho_t_bay * (p_static_ext_exit / pt_bay)**(1.0 / gamma)
@@ -82,6 +87,21 @@ def size_ventilation(mdot_target_kg_s, T_inf_K, p_inf_Pa, Mach, Cp_exit, outlet_
         dp_outlet = (mdot_target_kg_s**2) / (2.0 * rho_exit * (a_effective_exit)**2)
 
 
+        # DRAG
+        # 1. Ram Drag
+        drag_ram = mdot_target_kg_s * (v_inf - v_exit_nominal)
+        
+        # 2. Spillage Drag
+        drag_spillage = Cd_spill * qdin_inf * a_throat_guess
+        
+        drag_total = drag_ram + drag_spillage
+
+        # Push to outer scope state tracking dictionary
+        state_tracker["drag_ram"] = drag_ram
+        state_tracker["drag_spillage"] = drag_spillage
+        state_tracker["drag_total"] = drag_total
+
+
         # THE CONVERGENCE RESIDUAL:
         # Energy balance requires that available bay pressure minus outlet drop matches the target exit plane state
         # Hard Physical Constraint: Available pressure must drive the flow out to ambient
@@ -89,7 +109,7 @@ def size_ventilation(mdot_target_kg_s, T_inf_K, p_inf_Pa, Mach, Cp_exit, outlet_
 
         error_naca_eff = abs((eta_d - 0.85)/0.85)
 
-        print(f"mfr: {mfr:.3e}, pressure err: {error_pressure:.3e}, naca eff err: {error_naca_eff:.3e}, outlet eff: {Cd:.3f}")
+        print(f"mfr: {mfr:.3e}, pressure err: {error_pressure:.3e}, naca eff err: {error_naca_eff:.3e}, outlet eff: {Cd:.3f}, drag: {drag_total:.2f}")
 
         return error_pressure + error_naca_eff
 
@@ -100,6 +120,9 @@ def size_ventilation(mdot_target_kg_s, T_inf_K, p_inf_Pa, Mach, Cp_exit, outlet_
         aexit_bounds = ( 0.5, 10. )
 
         res = minimize( area_residual, x0=[0.5, 1.], method='Powell', bounds=[mfr_bounds, aexit_bounds])
+
+        # Force a final evaluation at the exact converged minimum to update state_tracker
+        _ = area_residual(res.x)
 
         final_mfr = res.x[0]
 
@@ -112,6 +135,9 @@ def size_ventilation(mdot_target_kg_s, T_inf_K, p_inf_Pa, Mach, Cp_exit, outlet_
             "inlet__area_cm2": inlet__area * 10000.0,
             "outlet_area_cm2": outlet_area * 10000.0,
             "mfr": final_mfr,
+            "drag_ram_N": state_tracker["drag_ram"],
+            "drag_spillage_N": state_tracker["drag_spillage"],
+            "drag_total_N": state_tracker["drag_total"],
         }
     except Exception:
         return {
@@ -126,47 +152,66 @@ def run_case(
     altitude_ft,
     dISA_K,
     Mach,
-    BAY_VOLUME_M3,
-    TARGET_ACPM,
-    Q_BAY_LOAD_W,
-    T_SYSTEM_MAX_degC,
     Cp_exit,
     outlet_to_test,
-    if_Solve_Ventilation=True,
-    if_Solve_Cooling=False,
+    BAY_VOLUME_M3,
+    T_SYSTEM_MAX_degC = None,
+    TARGET_ACPM = None,
+    Q_BAY_LOAD_W = None,
 ):
 
+    # Get atmospheric data
     p_inf, T_inf, rho_inf, _ = atmo(altitude_ft, dISA_K)
 
-    if if_Solve_Ventilation:
+
+    # Compute the required mass flow rate
+    mdot_target_acpm = mdot_target_thermal = False
+
+    # Required MFR for: Ventilation
+    if TARGET_ACPM:
+        T_max_K = (T_SYSTEM_MAX_degC + 273.15) if T_SYSTEM_MAX_degC else None
+
         vol_flow_rate_rps = (TARGET_ACPM / 60.0) * BAY_VOLUME_M3
-        mdot_target = rho_inf * vol_flow_rate_rps
+        mdot_target_acpm = rho_inf * vol_flow_rate_rps
 
-        res = size_ventilation(
-            mdot_target,
-            T_inf,
-            p_inf,
-            Mach,
-            Cp_exit,
-            outlet_to_test
-        )
+        print(f"  Mass Flow to vent: {mdot_target_acpm:.4f} kg/s")
 
-    if if_Solve_Cooling:
-        T_max = T_SYSTEM_MAX_degC + 273.15
+    # Required MFR for: Cooling
+    if Q_BAY_LOAD_W:
+        try:
+            T_max_K = T_SYSTEM_MAX_degC + 273.15
+        except Exception:
+            return {
+                "status": "Failed",
+                "reason": "Q_BAY_LOAD_W also requires T_SYSTEM_MAX_degC to be defined."
+            }
+
         Tt_inf = T_inf * (1.0 + gamm2 * Mach**2)
+        dT_allowed = T_max_K - Tt_inf
+        mdot_target_thermal = Q_BAY_LOAD_W / (cp_air * dT_allowed)
 
-        dT_allowed = T_max - Tt_inf
-        mdot_target = Q_BAY_LOAD_W / (cp_air * dT_allowed)
+        print(f"  Mass Flow to cool: {mdot_target_thermal:.4f} kg/s")
 
-        res = size_ventilation(
-            mdot_target,
-            T_inf,
-            p_inf,
-            Mach,
-            Cp_exit,
-            outlet_to_test,
-            T_max
-        )
+    # The target massflow rate is the highest
+    try:
+        mdot_target = max(mdot_target_acpm, mdot_target_thermal)
+    except Exception:
+        return {
+            "status": "Failed",
+            "reason": "No TARGET_ACPM and/or Q_BAY_LOAD_W defined."
+        }
+
+
+    # Find the appropriate inlet and outlet areas.
+    res = size_ventilation(
+        mdot_target,
+        T_inf,
+        p_inf,
+        Mach,
+        Cp_exit,
+        outlet_to_test,
+        T_max_K,
+    )
 
     return res
 
@@ -177,14 +222,12 @@ if __name__ == "__main__":
         altitude_ft=10000.,
         dISA_K=15.,
         Mach=0.25,
-        BAY_VOLUME_M3=2.4,
-        TARGET_ACPM=5.0,
-        Q_BAY_LOAD_W=1681.,
-        T_SYSTEM_MAX_degC=32.0,
         Cp_exit=0.,
         outlet_to_test="OutletParallelRamp",
-        if_Solve_Ventilation=True,
-        if_Solve_Cooling=False,
+        BAY_VOLUME_M3=2.29,
+        T_SYSTEM_MAX_degC=32.0,
+        TARGET_ACPM=5.0,
+        Q_BAY_LOAD_W=3000.,
     )
 
     if res["status"] == "Success":
@@ -192,5 +235,8 @@ if __name__ == "__main__":
         print(f"  Throat Area, Inlet  : {res['inlet__area_cm2']:.2f} cm²")
         print(f"  Throat Area, Outlet : {res['outlet_area_cm2']:.2f} cm²")
         print(f"  Operating MFR    : {res['mfr']:.3f}")
+        print(f"  Ram Drag         : {res['drag_ram_N']:.2f} N")
+        print(f"  Spillage Drag    : {res['drag_spillage_N']:.2f} N")
+        print(f"  Total Drag       : {res['drag_total_N']:.2f} N")
     else:
         print(f"  Sizing Failed: {res.get('reason')}")

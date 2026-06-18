@@ -8,10 +8,16 @@ def naca_pressure_recovery(mfr):
     eta is defined based on dynamic pressure recovery:
         Ptot_recovered = Ps + eta*(Ptot_inf - Ps_inf)
     """
-    mfr_clamped = max(0., min(mfr, 1.))
-    eta = -1.1 * (mfr_clamped - 0.65)**2 + 0.85
 
-    return max(0.1, eta)
+    mfr = max(0., min(mfr, 1.))
+
+    eta = -1.1 * (mfr - 0.65)**2 + 0.85
+    eta = min(max(0.1, eta), 1.)
+
+    K_spill = 0.4
+    Cd_spill = K_spill * (1.0 - mfr)**2
+
+    return eta, Cd_spill
 
 
 def get_outlet_cd(outlet_type, R_vel, porosity=0.6):
