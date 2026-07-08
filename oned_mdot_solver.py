@@ -6,17 +6,21 @@ from auxfunctions import *
 from InletOutletModels import *
 
 
-def size_ventilation(mdot_target_kg_s, T_inf_K, p_inf_Pa, Mach, Cp_exit, outlet_type, T_max_K=None, k_sys=1.5):
+def size_ventilation(mdot_target_kg_s, altitude_ft, dISA_K, Mach, inlet_position_m, Cp_exit, outlet_type, T_max_K=None, k_sys=1.5):
     """
     Sizes the required NACA inlet throat area to satisfy a target mfr and systems requirements.
     Calculates ram and spillage drag inline to support drag-targeted optimization routines.
     """
-    
+
+    # Get atmospheric conditions
+    p_inf_Pa, T_inf_K, rho_inf, mu = atmo(altitude_ft, dISA_K)
+
+
     # Freestream Aerodynamics & Stagnation States
     a_inf = math.sqrt(gamma * R_gas * T_inf_K)
     v_inf = Mach * a_inf
     rho_inf = p_inf_Pa / (R_gas * T_inf_K)
-    
+
     pt_inf = p_inf_Pa * (1.0 + gamm2 * Mach**2)**(gamma/gamm1)
     Tt_inf = T_inf_K  * (1.0 + gamm2 * Mach**2)
 
@@ -36,17 +40,25 @@ def size_ventilation(mdot_target_kg_s, T_inf_K, p_inf_Pa, Mach, Cp_exit, outlet_
     def area_residual(x):
 
         mfr = x[0]
-        
+
         # Calculate target throat area base on current MFR iteration
         a_throat_guess = mdot_target_kg_s / (rho_inf * v_inf * mfr)
         
         a_exit = a_throat_guess * x[1]
-        
+
+
         # Dynamic Inlet Total Pressure Recovery
-        eta_d, Cd_spill = naca_pressure_recovery(mfr)
+        #_ Boundary layer thickness
+        ReM = rho_inf * v_inf / mu
+        delta_bl = BoundaryLayerThickness(ReM, inlet_position_m) 
+        
+        # Geometrical throat depth step for scaling calculation
+        # Assuming a rectangular aspect ratio width/height profile from your design rules
+        eta_d, Cd_spill = naca_pressure_recovery(mfr, delta=delta_bl, area=a_throat_guess)
 
         pt_1 = p_inf_Pa + eta_d * qdin_inf
         Tt_1 = Tt_inf  # ASSUMPTION: no total temp losses at the inlet
+
 
         # Node 1 (Throat State)
         m_1 = solve_throat_mach(mdot_target_kg_s, a_throat_guess, pt_1, Tt_1)
@@ -152,6 +164,7 @@ def run_case(
     altitude_ft,
     dISA_K,
     Mach,
+    inlet_position_m,
     Cp_exit,
     outlet_to_test,
     BAY_VOLUME_M3,
@@ -161,7 +174,7 @@ def run_case(
 ):
 
     # Get atmospheric data
-    p_inf, T_inf, rho_inf, _ = atmo(altitude_ft, dISA_K)
+    _, T_inf, rho_inf, _ = atmo(altitude_ft, dISA_K)
 
 
     # Compute the required mass flow rate
@@ -205,9 +218,10 @@ def run_case(
     # Find the appropriate inlet and outlet areas.
     res = size_ventilation(
         mdot_target,
-        T_inf,
-        p_inf,
+        altitude_ft,
+        dISA_K,
         Mach,
+        inlet_position_m,
         Cp_exit,
         outlet_to_test,
         T_max_K,
@@ -222,12 +236,13 @@ if __name__ == "__main__":
         altitude_ft=10000.,
         dISA_K=15.,
         Mach=0.25,
+        inlet_position_m=6.,
         Cp_exit=0.,
         outlet_to_test="OutletParallelRamp",
-        BAY_VOLUME_M3=2.29,
-        T_SYSTEM_MAX_degC=32.0,
+        BAY_VOLUME_M3=0.75,
+        #T_SYSTEM_MAX_degC=32.0,
         TARGET_ACPM=5.0,
-        Q_BAY_LOAD_W=3000.,
+        #Q_BAY_LOAD_W=3000.,
     )
 
     if res["status"] == "Success":
