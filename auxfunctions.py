@@ -52,3 +52,16 @@ def solve_throat_mach(mfr_target_kg_m3, S_throat_m2, Ptot_Pa, Ttot_Pa):
     MM = res.x[0]
 
     return MM
+
+
+
+def BoundaryLayerThickness(ReM, position):
+    """
+    Estimates the boundary layer thickess at a given position.
+    
+    Parameters:
+    ReM         : Reynolds number per unit length [1/m]
+    position    : Where to measure the boundary layer thickness [m]
+    """
+
+    return 0.37*position*((ReM*position)**-0.2)
