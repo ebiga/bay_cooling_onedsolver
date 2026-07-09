@@ -1,8 +1,9 @@
 import math
+import numpy as np
 
 
 
-def naca_pressure_recovery(mfr, delta=None, area=None, C_vortex=2.0, aspect_r=4):
+def naca_pressure_recovery(mfr, delta=0, area=None, C_vortex=2.0, aspect_r=4):
     """
     Empirical fit for standard NACA submerged flush inlet pressure recovery.
     Based on the classics, NACA RM A7I30 / NACA ACR 5120
@@ -10,14 +11,14 @@ def naca_pressure_recovery(mfr, delta=None, area=None, C_vortex=2.0, aspect_r=4)
         Ptot_recovered = Ps + eta*(Ptot_inf - Ps_inf)
 
     Extended NACA submerged flush inlet pressure recovery incorporating the 
-    ESDU-based boundary layer thickness penalty model.
+    ESDU 86002 boundary layer thickness penalty model.
     
     Parameters:
     mfr      : Mass flow ratio (V_throat / V_inf)
     delta    : Incoming boundary layer thickness [m]
     area     : Inlet throat area [m2]
     C_vortex : Vortex scavenging efficiency (typically 1.8 to 2.2)
-    aspect_r : Inlet throat aspect ration (in the range 3:1 to 5:1)
+    aspect_r : Inlet throat aspect ratio (in the range 3:1 to 5:1)
 
     h_i      : Inlet throat height [m]
     """
@@ -25,23 +26,57 @@ def naca_pressure_recovery(mfr, delta=None, area=None, C_vortex=2.0, aspect_r=4)
     # Clip for safety
     mfr = max(1e-4, min(mfr, 1.))
 
-    # Clean baseline recovery profile
-    eta = -1.1 * (mfr - 0.65)**2 + 0.85
-    eta = min(max(0.1, eta), 1.)
-
     # Kinematic spillage
     K_spill = 0.4
     Cd_spill = K_spill * (1.0 - mfr)**2
 
 
-    if delta:
+    if delta > 0:
+        if area is None:
+            raise ValueError("Area must be provided to calculate throat height (h_i) when delta > 0.")
+        
         # Turbulent 1/7th power-law boundary layer momentum thickness estimation
         theta = 0.097 * delta
-
-        # ESDU exponential degradation tracking
         h_i = math.sqrt(area / aspect_r)
-        loss_exponent = -C_vortex * (theta / (h_i * math.sqrt(mfr)))
-        eta = eta * math.exp(loss_exponent)
+        theta_over_hi = theta / max(1e-5, h_i)
+    else:
+        # Pure clean air baseline condition
+        theta_over_hi = 0.0
+
+
+    # Scaling factor for the entry lip (d_1_fl / d_t) for a standard 7-degree ramp
+    lip_factor = 1.1602  
+
+
+    # ESDU 86002 TABLE LOOKUPS
+    
+    # Figure 17: Maximum Ram Pressure Efficiency (eta_m) vs theta/d_t
+    fig17_theta_dt = [0.00, 0.05, 0.10, 0.163, 0.25, 0.35, 0.50]
+    fig17_eta_m    = [0.85, 0.78, 0.73, 0.688, 0.62, 0.56, 0.50]
+    eta_m = np.interp(theta_over_hi, fig17_theta_dt, fig17_eta_m)
+
+    # Figure 18: Optimal Modified Mass Flow Ratio (mu_m) vs theta/d_t
+    fig18_theta_dt = [0.00, 0.05, 0.10, 0.163, 0.25, 0.35, 0.50]
+    fig18_mu_m     = [0.45, 0.41, 0.38, 0.345, 0.31, 0.28, 0.25]
+    mu_m = np.interp(theta_over_hi, fig18_theta_dt, fig18_mu_m)
+
+    # 3. Calculate Off-Design Mass Flow Parameter (mu - mu_m)
+    mu = mfr * lip_factor
+    delta_mu = mu - mu_m
+
+    # Figure 19a: Off-Design Mass Flow Correction Delta (Delta_eta_mf) vs (mu - mu_m)
+    fig19a_delta_mu  = [-0.20, 0.00, 0.070, 0.232, 0.420, 0.589, 0.80]
+    fig19a_delta_eta = [-0.01, 0.00, -0.006, -0.035, -0.050, 0.053, 0.02]
+    delta_eta_mf = np.interp(delta_mu, fig19a_delta_mu, fig19a_delta_eta)
+
+    # Optional tuning parameter hook: C_vortex can scale the BL sensitivity slightly 
+    # if you want to shift the baseline curve up or down. Default is 2.0 (neutral).
+    vortex_scaling = (2.0 / C_vortex) if C_vortex > 0 else 1.0
+
+
+    # TOTAL RECOVERY BOOKKEEPING
+    eta = eta_m + (delta_eta_mf * vortex_scaling)
+    eta = min(max(0.05, eta), 1.0)
 
 
     return eta, Cd_spill
