@@ -6,7 +6,7 @@ from auxfunctions import *
 from InletOutletModels import *
 
 
-def size_ventilation(mdot_target_kg_s, altitude_ft, dISA_K, Mach, inlet_position_m, Cp_exit, outlet_type, T_max_K=None, k_sys=1.5):
+def size_ventilation(mdot_target_kg_s, altitude_ft, dISA_K, Mach, inlet_position_m, outlet_position_m, Cp_exit, outlet_type, T_max_K=None, k_sys=1.5):
     """
     Sizes the required NACA inlet throat area to satisfy a target mfr and systems requirements.
     Calculates ram and spillage drag inline to support drag-targeted optimization routines.
@@ -50,7 +50,7 @@ def size_ventilation(mdot_target_kg_s, altitude_ft, dISA_K, Mach, inlet_position
         # Dynamic Inlet Total Pressure Recovery
         #_ Boundary layer thickness
         ReM = rho_inf * v_inf / mu
-        delta_bl = BoundaryLayerThickness(ReM, inlet_position_m) 
+        delta_bl = BoundaryLayerThickness(ReM, inlet_position_m)
         
         # Geometrical throat depth step for scaling calculation
         # Assuming a rectangular aspect ratio width/height profile from your design rules
@@ -89,10 +89,14 @@ def size_ventilation(mdot_target_kg_s, altitude_ft, dISA_K, Mach, inlet_position
         rho_exit = rho_t_bay * (p_static_ext_exit / pt_bay)**(1.0 / gamma)
             
         v_exit_nominal = mdot_target_kg_s / (rho_exit * a_exit)
-        R_vel = v_exit_nominal / v_inf
-        
+
+        # MOMENTUM FLUX RATIO (J) & GEOMETRIC BOUNDARY LAYER SCALING
+        J = (rho_exit * v_exit_nominal**2) / (rho_inf * v_inf**2 * (1.0 - Cp_exit))
+
         # Nozzle effective discharge area
-        Cd = get_outlet_cd(outlet_type, R_vel)
+        delta_bl = BoundaryLayerThickness(ReM, outlet_position_m)
+
+        Cd = get_outlet_cd(outlet_type, J, delta=delta_bl, a_exit=a_exit)
         a_effective_exit = Cd * a_exit
 
         # Use the true corrected exit density for the dynamic backpressure delta P
@@ -165,6 +169,7 @@ def run_case(
     dISA_K,
     Mach,
     inlet_position_m,
+    outlet_position_m,
     Cp_exit,
     outlet_to_test,
     BAY_VOLUME_M3,
@@ -222,6 +227,7 @@ def run_case(
         dISA_K,
         Mach,
         inlet_position_m,
+        outlet_position_m,
         Cp_exit,
         outlet_to_test,
         T_max_K,
@@ -237,6 +243,7 @@ if __name__ == "__main__":
         dISA_K=15.,
         Mach=0.25,
         inlet_position_m=6.,
+        outlet_position_m=5.,
         Cp_exit=0.,
         outlet_to_test="OutletParallelRamp",
         BAY_VOLUME_M3=2.29,
