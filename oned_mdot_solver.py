@@ -123,11 +123,9 @@ def size_ventilation(mdot_target_kg_s, altitude_ft, dISA_K, Mach, inlet_position
         # Hard Physical Constraint: Available pressure must drive the flow out to ambient
         error_pressure = abs((pt_bay - dp_outlet - p_static_ext_exit) / p_static_ext_exit)
 
-        error_naca_eff = abs((eta_d - 0.85)/0.85)
+        print(f"mfr: {mfr:.3e}, pressure err: {error_pressure:.3e}, naca eff: {eta_d:.3e}, outlet eff: {Cd:.3f}, drag: {drag_total:.2f}")
 
-        print(f"mfr: {mfr:.3e}, pressure err: {error_pressure:.3e}, naca eff err: {error_naca_eff:.3e}, outlet eff: {Cd:.3f}, drag: {drag_total:.2f}")
-
-        return error_pressure + error_naca_eff
+        return error_pressure
 
 
     # Solve for required area
