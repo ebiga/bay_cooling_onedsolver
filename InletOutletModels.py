@@ -1,6 +1,8 @@
 import math
 import numpy as np
 
+import inputs
+
 
 
 def naca_pressure_recovery(mfr, delta=0, area=None, C_vortex=2.0, aspect_r=4):
