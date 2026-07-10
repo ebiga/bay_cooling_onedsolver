@@ -148,3 +148,67 @@ def get_outlet_cd(outlet_type, J, delta=0, a_exit=None, aspect_r=4, porosity=0.6
 
     else:
         raise ValueError(f"Unknown outlet type: {outlet_type}")
+
+
+
+def straight_duct_loss(mdot, rho, mu, length, width, height=None, roughness=0.0015e-3):
+    """
+    Computes total pressure loss for a straight duct section using the 
+    explicit Churchill (1977) friction correlation across all flow regimes.
+    Supports both rectangular and circular geometry profiles.
+    """
+    if height is not None:
+        area = width * height
+        perimeter = 2.0 * (width + height)
+        dh = (4.0 * area) / perimeter
+    else:
+        area = (math.pi * width**2) / 4.0
+        dh = width
+
+    # Local velocity and dynamic pressure
+    v = mdot / (rho * area)
+    q = 0.5 * rho * v**2
+    
+    # Safeguard Reynolds number limits against low or zero flow bounds
+    re = max(10.0, (rho * v * dh) / max(1e-7, mu))
+    rel_roughness = roughness / dh
+
+    # Churchill Correlation Sub-components (eliminates transcendental iteration loops)
+    term_a_inner = (7.0 / re)**0.9 + 0.27 * rel_roughness
+    log_arg = max(1e-12, term_a_inner)
+    A = (-2.457 * math.log(log_arg))**16
+    B = (37530.0 / re)**16
+    
+    f = 8.0 * ((8.0 / re)**12 + 1.0 / ((A + B)**1.5))**(1.0 / 12.0)
+    
+    k_duct = f * (length / dh)
+    dp_duct = k_duct * q
+    
+    return k_duct, dp_duct, area
+
+
+
+def bend_loss(mdot, rho, r_centerline, width, height=None):
+    """
+    Computes total pressure loss across a 90-degree bend based on geometric sharpness.
+    Uses a standard empirical curve-fit optimized for clean ducting networks.
+    """
+    if height is not None:
+        area = width * height
+        perimeter = 2.0 * (width + height)
+        dh = (4.0 * area) / perimeter
+    else:
+        area = (math.pi * width**2) / 4.0
+        dh = width
+
+    v = mdot / (rho * area)
+    q = 0.5 * rho * v**2
+    
+    # Enforce minimum curvature ratio to avoid math runtime issues
+    r_ratio = max(0.1, r_centerline / dh)
+    
+    # Idelchik-aligned bend loss formulation
+    k_bend = 0.131 + 0.163 * (1.0 / r_ratio)**3.5
+    dp_bend = k_bend * q
+    
+    return k_bend, dp_bend, area

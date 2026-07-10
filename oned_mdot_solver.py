@@ -60,26 +60,69 @@ def size_ventilation(mdot_target_kg_s, T_max_K=None):
         Tt_1 = Tt_inf  # ASSUMPTION: no total temp losses at the inlet
 
 
+        # =========================================================================
         # Node 1 (Throat State)
+        # =========================================================================
         m_1 = solve_throat_mach(mdot_target_kg_s, a_throat_guess, pt_1, Tt_1)
         t_static_1 = Tt_1 / (1.0 + gamm2 * m_1**2)
         p_static_1 = pt_1 / (1.0 + gamm2 * m_1**2)**(gamma/gamm1)
         rho_static_1 = p_static_1 / (R_gas * t_static_1)
         v_1 = m_1 * math.sqrt(gamma * R_gas * t_static_1)
 
+        mu_static_1 = ViscositySutherland(t_static_1)
 
-        # Losses: Friction
-        dp_friction = inputs.K_SYS * (0.5 * rho_static_1 * v_1**2)
+        # INTERNAL DUCTING TOTAL PRESSURE DROP ACCUMULATOR
+        dp_ducting_total = 0.0
+        
+        # Ensure your naming matches your input object attribute (e.g., inputs.layout)
+        for element in inputs.layout:
+            elem_type = element["type"]
+            
+            if elem_type == "pipe":
+                # Call straight duct loss function (Returns: k, dp, area)
+                _, dp_elem, _ = straight_duct_loss(
+                    mdot=mdot_target_kg_s, 
+                    rho=rho_static_1, 
+                    mu=mu_static_1, 
+                    length=element["length"], 
+                    width=element["width"], 
+                    height=element.get("height")
+                )
+                dp_ducting_total += dp_elem
+                
+            elif elem_type == "bend":
+                # Call curved bend loss function (Fixed: removed mu, fixed unpacking)
+                _, dp_elem, _ = bend_loss(
+                    mdot=mdot_target_kg_s,
+                    rho=rho_static_1,
+                    r_centerline=element["r_centerline"],
+                    width=element["width"],
+                    height=element.get("height")
+                )
+                dp_ducting_total += dp_elem
+                
+            else:
+                raise ValueError(f"Unknown ducting element type encountered: {elem_type}")
+
+        # TOTAL INTERNAL LOSS BOOKKEEPING
+        if dp_ducting_total > 0.0:
+            # Layout pipeline is active: total loss is already computed explicitly in Pa
+            dp_internal_total = dp_ducting_total
+        else:
+            # In case we are modelling a plenum
+            q_1 = 0.5 * rho_static_1 * v_1**2
+            dp_internal_total = inputs.K_SYS * q_1
 
 
+        # =========================================================================
         # Node 2-A (Exit, Thermal demand)
+        # =========================================================================
         # Assume equipment heat raises total temperature but does not
-        # directly impose a total-pressure penalty.
+        # directly impose an additional total-pressure penalty.
         Tt_bay = T_max_K if T_max_K else Tt_inf
 
         # Bay total pressure with losses
-        pt_bay = pt_1 - dp_friction
-       
+        pt_bay = pt_1 - dp_internal_total       
 
         # Node 2-B (Exit, Drop Model via Discharge Coefficient)
         Tt_exit = Tt_bay
