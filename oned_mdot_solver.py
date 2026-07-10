@@ -72,12 +72,12 @@ def size_ventilation(mdot_target_kg_s, T_max_K=None):
         mu_static_1 = ViscositySutherland(t_static_1)
 
         # INTERNAL DUCTING TOTAL PRESSURE DROP ACCUMULATOR
-        dp_ducting_total = 0.0
-        
+        dp_internal_total = 0.0
+
         # Ensure your naming matches your input object attribute (e.g., inputs.layout)
         for element in inputs.layout:
             elem_type = element["type"]
-            
+
             if elem_type == "pipe":
                 # Call straight duct loss function (Returns: k, dp, area)
                 _, dp_elem, _ = straight_duct_loss(
@@ -88,8 +88,8 @@ def size_ventilation(mdot_target_kg_s, T_max_K=None):
                     width=element["width"], 
                     height=element.get("height")
                 )
-                dp_ducting_total += dp_elem
-                
+                dp_internal_total += dp_elem
+
             elif elem_type == "bend":
                 # Call curved bend loss function (Fixed: removed mu, fixed unpacking)
                 _, dp_elem, _ = bend_loss(
@@ -99,19 +99,15 @@ def size_ventilation(mdot_target_kg_s, T_max_K=None):
                     width=element["width"],
                     height=element.get("height")
                 )
-                dp_ducting_total += dp_elem
-                
+                dp_internal_total += dp_elem
+
+            elif elem_type == "plenum":
+                # Just a bulk K loss model
+                dp_elem = element["KL"] * 0.5 * rho_static_1 * v_1**2 
+                dp_internal_total += dp_elem
+
             else:
                 raise ValueError(f"Unknown ducting element type encountered: {elem_type}")
-
-        # TOTAL INTERNAL LOSS BOOKKEEPING
-        if dp_ducting_total > 0.0:
-            # Layout pipeline is active: total loss is already computed explicitly in Pa
-            dp_internal_total = dp_ducting_total
-        else:
-            # In case we are modelling a plenum
-            q_1 = 0.5 * rho_static_1 * v_1**2
-            dp_internal_total = inputs.K_SYS * q_1
 
 
         # =========================================================================
