@@ -73,6 +73,7 @@ def size_ventilation(mdot_target_kg_s, T_max_K=None):
 
         # INTERNAL DUCTING TOTAL PRESSURE DROP ACCUMULATOR
         dp_internal_total = 0.0
+        Tt_bay = Tt_inf
 
         # Ensure your naming matches your input object attribute (e.g., inputs.layout)
         for element in inputs.layout:
@@ -90,7 +91,6 @@ def size_ventilation(mdot_target_kg_s, T_max_K=None):
                 )
                 dp_internal_total += dp_elem
 
-                Tt_bay = Tt_inf
 
             elif elem_type == "bend":
                 # Call curved bend loss function (Fixed: removed mu, fixed unpacking)
@@ -103,14 +103,12 @@ def size_ventilation(mdot_target_kg_s, T_max_K=None):
                 )
                 dp_internal_total += dp_elem
 
-                Tt_bay = Tt_inf
 
             elif elem_type == "VentingBay":
                 # Just a bulk K loss model
                 dp_elem = element["KL"] * 0.5 * rho_static_1 * v_1**2
                 dp_internal_total += dp_elem
 
-                Tt_bay = Tt_inf
 
             elif elem_type == "CoolingBay":
                 # Assuming plenum losses came from other pimping elements
