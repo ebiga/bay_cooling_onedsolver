@@ -242,7 +242,8 @@ def run_case():
 
 
     # Compute the required mass flow rate
-    mdot_target_acpm = mdot_target_thermal = False
+    # The target massflow rate is the highest
+    mdot_target = 0.
 
 
     # LOOP THE INPUT AND DETERMINE THE CASES
@@ -258,6 +259,8 @@ def run_case():
             vol_flow_rate_rps = (TARGET_ACPM / 60.0) * BAY_VOLUME_M3
             mdot_target_acpm = rho_inf * vol_flow_rate_rps
 
+            mdot_target = max(mdot_target, mdot_target_acpm)
+
             print(f"  Mass Flow to vent: {mdot_target_acpm:.4f} kg/s")
 
         # Required MFR for: Cooling
@@ -270,6 +273,8 @@ def run_case():
             Tt_inf = T_inf * (1.0 + gamm2 * inputs.Mach**2)
             dT_allowed = T_max_K - Tt_inf
             mdot_target_thermal = Q_BAY_LOAD_W / (cp_air * dT_allowed)
+
+            mdot_target = max(mdot_target, mdot_target_thermal)
 
             print(f"  Mass Flow to cool: {mdot_target_thermal:.4f} kg/s")
 
