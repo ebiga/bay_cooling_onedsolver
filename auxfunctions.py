@@ -20,7 +20,7 @@ def atmo(altitude_ft, dISA_degC):
     p_Pa = 101325. * ( 1. - 0.000022558*altitude_m )**5.2559
     T_K = 288.15 - 0.0065*altitude_m + dISA_degC
     rho_kg_m3 = p_Pa / (R_gas * T_K)
-    mu_kg_ms = 0.00001716 * (T_K/273.15)**1.5 * (273.15+110.)/(T_K+110.)
+    mu_kg_ms = ViscositySutherland(T_K)
 
     return p_Pa, T_K, rho_kg_m3, mu_kg_ms
 
@@ -65,3 +65,9 @@ def BoundaryLayerThickness(ReM, position):
     """
 
     return 0.37*position*((ReM*position)**-0.2)
+
+
+
+def ViscositySutherland(T_K):
+
+    return 0.00001716 * (T_K/273.15)**1.5 * (273.15+110.)/(T_K+110.)
