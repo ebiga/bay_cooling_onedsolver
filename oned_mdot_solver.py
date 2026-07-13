@@ -31,20 +31,19 @@ def size_ventilation(mdot_target_kg_s, T_max_K=None):
     p_static_ext_exit = p_inf_Pa + inputs.Cp_exit * qdin_inf
 
     # Local state tracking dictionary to capture the optimizer's current metrics
-    state_tracker = {
-        "drag_ram": 0.0,
-        "drag_spillage": 0.0,
-        "drag_total": 0.0
-    }
+    state_tracker = {}
     
-    def area_residual(x):
+    def evaluate_system_physics(x):
+        """
+        Executes the 1D aerothermal pipeline for a given geometry state.
+        """
 
         mfr = x[0]
+        area_ratio = x[1]
 
         # Calculate target throat area base on current MFR iteration
         a_throat_guess = mdot_target_kg_s / (rho_inf * v_inf * mfr)
-        
-        a_exit = a_throat_guess * x[1]
+        a_exit = a_throat_guess * area_ratio
 
 
         # Dynamic Inlet Total Pressure Recovery
@@ -173,7 +172,27 @@ def size_ventilation(mdot_target_kg_s, T_max_K=None):
 
         print(f"mfr: {mfr:.3e}, pressure err: {error_pressure:.3e}, naca eff: {eta_d:.3e}, outlet eff: {Cd:.3f}, drag: {drag_total:.2f}")
 
-        return error_pressure
+        # Cache results for optimizer evaluation reads
+        state_tracker["drag_ram"] = drag_ram
+        state_tracker["drag_spillage"] = drag_spillage
+        state_tracker["drag_total"] = drag_total
+        state_tracker["error_pressure"] = error_pressure
+        state_tracker["inlet_area"] = a_throat_guess
+        state_tracker["outlet_area"] = a_exit
+        state_tracker["Cd"] = Cd
+        state_tracker["eta_d"] = eta_d
+
+        return
+
+    # --- Optimizer Sub-Functions for SLSQP ---
+    def obj_drag(x):
+        evaluate_system_physics(x)
+        return state_tracker["drag_total"]
+
+    def const_pressure(x):
+        evaluate_system_physics(x)
+        return state_tracker["error_pressure"]
+
 
 
     # Solve for required area
@@ -181,26 +200,36 @@ def size_ventilation(mdot_target_kg_s, T_max_K=None):
         mfr_bounds = ( 0.1, 1. )
         aexit_bounds = ( 0.5, 10. )
 
-        res = minimize( area_residual, x0=[0.5, 1.], method='Powell', bounds=[mfr_bounds, aexit_bounds])
+        # Define equality constraint: pressure residual must equal zero
+        constraints = {"type": "eq", "fun": const_pressure}
 
-        # Force a final evaluation at the exact converged minimum to update state_tracker
-        _ = area_residual(res.x)
+        res = minimize(
+            obj_drag, 
+            x0=[0.5, 1.0], 
+            method="SLSQP", 
+            bounds=[mfr_bounds, aexit_bounds],
+            constraints=constraints,
+            options={"ftol": 1e-8}
+        )
 
-        final_mfr = res.x[0]
+        if not res.success:
+            raise RuntimeError("SLSQP failed to converge constraints cleanly.")
 
-        inlet__area = mdot_target_kg_s / (rho_inf * v_inf * final_mfr)
-        outlet_area = res.x[1] * inlet__area
-        
+        # Ensure track states match the final optimized vector exactly
+        evaluate_system_physics(res.x)        
+
         return {
             "status": "Success",
             "mdot": mdot_target_kg_s,
-            "inlet__area_cm2": inlet__area * 10000.0,
-            "outlet_area_cm2": outlet_area * 10000.0,
-            "mfr": final_mfr,
+            "inlet__area_cm2": state_tracker["inlet_area"]  * 10000.0,
+            "outlet_area_cm2": state_tracker["outlet_area"] * 10000.0,
+            "mfr": res.x[0],
+            "outlet_cd": state_tracker["Cd"],
+            "inlet_eta": state_tracker["eta_d"],
             "drag_ram_N": state_tracker["drag_ram"],
             "drag_spillage_N": state_tracker["drag_spillage"],
-            "drag_total_N": state_tracker["drag_total"],
-        }
+            "drag_total_N": state_tracker["drag_total"],        }
+
     except Exception:
         return {
             "status": "Failed",
