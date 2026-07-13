@@ -90,6 +90,8 @@ def size_ventilation(mdot_target_kg_s, T_max_K=None):
                 )
                 dp_internal_total += dp_elem
 
+                Tt_bay = Tt_inf
+
             elif elem_type == "bend":
                 # Call curved bend loss function (Fixed: removed mu, fixed unpacking)
                 _, dp_elem, _ = bend_loss(
@@ -101,10 +103,19 @@ def size_ventilation(mdot_target_kg_s, T_max_K=None):
                 )
                 dp_internal_total += dp_elem
 
-            elif elem_type == "plenum":
+                Tt_bay = Tt_inf
+
+            elif elem_type == "VentingBay":
                 # Just a bulk K loss model
                 dp_elem = element["KL"] * 0.5 * rho_static_1 * v_1**2 
                 dp_internal_total += dp_elem
+
+                Tt_bay = Tt_inf
+
+            elif elem_type == "CoolingBay":
+                # Assume equipment heat raises total temperature but does not
+                # directly impose an additional total-pressure penalty.
+                Tt_bay = T_max_K
 
             else:
                 raise ValueError(f"Unknown ducting element type encountered: {elem_type}")
@@ -113,10 +124,6 @@ def size_ventilation(mdot_target_kg_s, T_max_K=None):
         # =========================================================================
         # Node 2-A (Exit, Thermal demand)
         # =========================================================================
-        # Assume equipment heat raises total temperature but does not
-        # directly impose an additional total-pressure penalty.
-        Tt_bay = T_max_K if T_max_K else Tt_inf
-
         # Bay total pressure with losses
         pt_bay = pt_1 - dp_internal_total       
 
@@ -210,30 +217,34 @@ def run_case():
     # Compute the required mass flow rate
     mdot_target_acpm = mdot_target_thermal = False
 
-    # Required MFR for: Ventilation
-    if inputs.TARGET_ACPM:
-        T_max_K = (inputs.T_SYSTEM_MAX_degC + 273.15) if inputs.T_SYSTEM_MAX_degC else None
 
-        vol_flow_rate_rps = (inputs.TARGET_ACPM / 60.0) * inputs.BAY_VOLUME_M3
-        mdot_target_acpm = rho_inf * vol_flow_rate_rps
+    # LOOP THE INPUT AND DETERMINE THE CASES
+    for item in inputs.layout:
 
-        print(f"  Mass Flow to vent: {mdot_target_acpm:.4f} kg/s")
+        # Required MFR for: Ventilation
+        if item.get("type") == "VentingBay":
+            BAY_VOLUME_M3 = item["BAY_VOLUME_M3"]
+            TARGET_ACPM   = item["TARGET_ACPM"]
+    
+            T_max_K = None
 
-    # Required MFR for: Cooling
-    if inputs.Q_BAY_LOAD_W:
-        try:
-            T_max_K = inputs.T_SYSTEM_MAX_degC + 273.15
-        except Exception:
-            return {
-                "status": "Failed",
-                "reason": "Q_BAY_LOAD_W also requires T_SYSTEM_MAX_degC to be defined."
-            }
+            vol_flow_rate_rps = (TARGET_ACPM / 60.0) * BAY_VOLUME_M3
+            mdot_target_acpm = rho_inf * vol_flow_rate_rps
 
-        Tt_inf = T_inf * (1.0 + gamm2 * inputs.Mach**2)
-        dT_allowed = T_max_K - Tt_inf
-        mdot_target_thermal = inputs.Q_BAY_LOAD_W / (cp_air * dT_allowed)
+            print(f"  Mass Flow to vent: {mdot_target_acpm:.4f} kg/s")
 
-        print(f"  Mass Flow to cool: {mdot_target_thermal:.4f} kg/s")
+        # Required MFR for: Cooling
+        if item.get("type") == "CoolingBay":
+            T_SYSTEM_MAX_degC = item["T_SYSTEM_MAX_degC"]
+            Q_BAY_LOAD_W      = item["Q_BAY_LOAD_W"]
+
+            T_max_K = T_SYSTEM_MAX_degC + 273.15
+
+            Tt_inf = T_inf * (1.0 + gamm2 * inputs.Mach**2)
+            dT_allowed = T_max_K - Tt_inf
+            mdot_target_thermal = Q_BAY_LOAD_W / (cp_air * dT_allowed)
+
+            print(f"  Mass Flow to cool: {mdot_target_thermal:.4f} kg/s")
 
     # The target massflow rate is the highest
     try:
