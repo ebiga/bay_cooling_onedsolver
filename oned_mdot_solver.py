@@ -156,13 +156,9 @@ def size_ventilation(mdot_target_kg_s, T_max_K=None):
         
         # 2. Spillage Drag
         drag_spillage = Cd_spill * qdin_inf * a_throat_guess
-        
-        drag_total = drag_ram + drag_spillage
 
-        # Push to outer scope state tracking dictionary
-        state_tracker["drag_ram"] = drag_ram
-        state_tracker["drag_spillage"] = drag_spillage
-        state_tracker["drag_total"] = drag_total
+        # Total        
+        drag_total = drag_ram + drag_spillage
 
 
         # THE CONVERGENCE RESIDUAL:
