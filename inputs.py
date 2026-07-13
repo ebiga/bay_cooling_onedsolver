@@ -16,7 +16,7 @@ outlet_type="OutletParallelRamp"
 
 # PIPELINE ELEMENTS
 # Piping types: pipe, bend [as many as needed in sequence]
-# Consumer types: 
+# Consumer types: VentingBay, CoolingBay
 # If only width (no height) is provided, assumes circular section
     # {"type": "pipe", "length": _, "width": _, "height": _optional_}
     # {"type": "bend", "r_centerline": _, "width": _, "height": _optional_}
