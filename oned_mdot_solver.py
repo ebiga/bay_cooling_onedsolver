@@ -6,7 +6,7 @@ from auxfunctions import *
 from InletOutletModels import *
 
 
-def size_ventilation(mdot_target_kg_s, T_max_K=None):
+def size_ventilation(mdot_target_kg_s, T_max_K=None, dPtot_driven_Pa=None):
     """
     Sizes the required NACA inlet throat area to satisfy a target mfr and systems requirements.
     Calculates ram and spillage drag inline to support drag-targeted optimization routines.
@@ -117,6 +117,13 @@ def size_ventilation(mdot_target_kg_s, T_max_K=None):
                 # Assume equipment heat raises total temperature but does not
                 # directly impose an additional total-pressure penalty.
                 Tt_bay = T_max_K
+
+
+            elif elem_type == "FanCooler":
+                # The pressure loss is provided by the supplier data.
+                dp_elem = dPtot_driven_Pa
+                dp_internal_total += dp_elem
+
 
             else:
                 raise ValueError(f"Unknown ducting element type encountered: {elem_type}")
@@ -255,6 +262,7 @@ def run_case():
             TARGET_ACPM   = item["TARGET_ACPM"]
     
             T_max_K = None
+            dPtot_driven_Pa = None
 
             vol_flow_rate_rps = (TARGET_ACPM / 60.0) * BAY_VOLUME_M3
             mdot_target_acpm = rho_inf * vol_flow_rate_rps
@@ -269,6 +277,7 @@ def run_case():
             Q_BAY_LOAD_W      = item["Q_BAY_LOAD_W"]
 
             T_max_K = T_SYSTEM_MAX_degC + 273.15
+            dPtot_driven_Pa = None
 
             Tt_inf = T_inf * (1.0 + gamm2 * inputs.Mach**2)
             dT_allowed = T_max_K - Tt_inf
@@ -278,18 +287,19 @@ def run_case():
 
             print(f"  Mass Flow to cool: {mdot_target_thermal:.4f} kg/s")
 
-    # The target massflow rate is the highest
-    try:
-        mdot_target = max(mdot_target_acpm, mdot_target_thermal)
-    except Exception:
-        return {
-            "status": "Failed",
-            "reason": "No TARGET_ACPM and/or Q_BAY_LOAD_W defined."
-        }
+        # Required MFR for: Fan Blower
+        if item.get("type") == "FanCooler":
+            mdot_target_fan = item["MassFlowRate_kg_s"]
+            dPtot_driven_Pa = item["TotalPressureDrop_Pa"]
 
+            T_max_K = None
+
+            mdot_target = max(mdot_target, mdot_target_fan)
+
+            print(f"  Mass Flow to fan: {mdot_target_fan:.4f} kg/s")
 
     # Find the appropriate inlet and outlet areas.
-    res = size_ventilation(mdot_target_kg_s=mdot_target, T_max_K=T_max_K)
+    res = size_ventilation(mdot_target_kg_s=mdot_target, T_max_K=T_max_K, dPtot_driven_Pa=dPtot_driven_Pa)
 
     return res
 
