@@ -107,12 +107,16 @@ def size_ventilation(mdot_target_kg_s, T_max_K=None):
 
             elif elem_type == "VentingBay":
                 # Just a bulk K loss model
-                dp_elem = element["KL"] * 0.5 * rho_static_1 * v_1**2 
+                dp_elem = element["KL"] * 0.5 * rho_static_1 * v_1**2
                 dp_internal_total += dp_elem
 
                 Tt_bay = Tt_inf
 
             elif elem_type == "CoolingBay":
+                # Assuming plenum losses came from other pimping elements
+                dp_elem = 0.
+                dp_internal_total += dp_elem
+
                 # Assume equipment heat raises total temperature but does not
                 # directly impose an additional total-pressure penalty.
                 Tt_bay = T_max_K
