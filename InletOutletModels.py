@@ -212,3 +212,31 @@ def bend_loss(mdot, rho, r_centerline, width, height=None):
     dp_bend = k_bend * q
     
     return k_bend, dp_bend, area
+
+
+
+def ElementArea(element):
+    '''
+    Determine local cross-sectional flow area for different elements.
+    '''
+
+    elem_type = element["type"]
+
+
+    if elem_type in ["pipe", "bend"]:
+        elem_w = element["width"]
+        elem_h = element.get("height", elem_w)
+        area_elem = elem_w * elem_h
+
+    elif elem_type == "FanCooler":
+        raise ValueError(f"TBD")
+
+    elif elem_type in ["VentingBay", "CoolingBay"]:
+        # we simply assume a very large value
+        area_elem = 999.0
+
+    else:
+        raise ValueError(f"Unknown ducting element: {elem_type}")
+    
+
+    return area_elem
