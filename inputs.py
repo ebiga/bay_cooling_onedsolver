@@ -1,7 +1,7 @@
 # Flight Conditions
-altitude_ft=10000.
-dISA_K=15.
-Mach=0.25
+altitude_ft=45000.
+dISA_K=35.
+Mach=0.74
 
 
 # Inlet Information
@@ -22,7 +22,7 @@ outlet_type="OutletParallelRamp"
     # {"type": "bend", "r_centerline": _, "width": _, "height": _optional_}
     # {"type": "VentingBay", "BAY_VOLUME_M3": _, "TARGET_ACPM": _, "KL": _}
     # {"type": "CoolingBay", "Q_BAY_LOAD_W": _, "T_SYSTEM_MAX_degC": _},
-    # {"type": "FanCooler", "MassFlowRate_kg_s": _, "TotalPressureDrop_Pa": _}
+    # {"type": "FanCooler", "MassFlowRate_kg_s": _, "TotalPressureDrop_Pa": _, "FanArea_m2": _}
 # THE ORDER MATTERS
 layout = [
     {"type": "pipe", "length": 0.45, "width": 0.45, "height": 0.45},
@@ -30,5 +30,5 @@ layout = [
     {"type": "pipe", "length": 0.45, "width": 0.45},
     {"type": "VentingBay", "BAY_VOLUME_M3": 0.75, "TARGET_ACPM": 5.0, "KL": 1.5},
     {"type": "CoolingBay", "Q_BAY_LOAD_W": 3000., "T_SYSTEM_MAX_degC": 32.0},
-    {"type": "FanCooler", "MassFlowRate_kg_s": 0.045, "TotalPressureDrop_Pa": 2365}
+    {"type": "FanCooler", "MassFlowRate_kg_s": 0.045, "TotalPressureDrop_Pa": 2365, "FanArea_m2": 0.014}
 ]
