@@ -23,6 +23,7 @@ outlet_type="OutletParallelRamp"
     # {"type": "VentingBay", "BAY_VOLUME_M3": _, "TARGET_ACPM": _, "KL": _}
     # {"type": "CoolingBay", "Q_BAY_LOAD_W": _, "T_SYSTEM_MAX_degC": _},
     # {"type": "FanCooler", "MassFlowRate_kg_s": _, "TotalPressureDrop_Pa": _}
+# THE ORDER MATTERS
 layout = [
     {"type": "pipe", "length": 0.45, "width": 0.45, "height": 0.45},
     {"type": "bend", "r_centerline": 0.45, "width": 0.45, "height": 0.45},

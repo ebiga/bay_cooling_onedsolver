@@ -60,7 +60,7 @@ def size_ventilation(mdot_target_kg_s, T_max_K=None, dPtot_driven_Pa=None):
 
 
         # =========================================================================
-        # Node 1 (Throat State)
+        # INLET: NACA throat
         # =========================================================================
         m_1 = solve_throat_mach(mdot_target_kg_s, a_throat_guess, pt_1, Tt_1)
         t_static_1 = Tt_1 / (1.0 + gamm2 * m_1**2)
@@ -70,73 +70,84 @@ def size_ventilation(mdot_target_kg_s, T_max_K=None, dPtot_driven_Pa=None):
 
         mu_static_1 = ViscositySutherland(t_static_1)
 
-        # INTERNAL DUCTING TOTAL PRESSURE DROP ACCUMULATOR
-        dp_internal_total = 0.0
-        Tt_bay = Tt_inf
 
-        # Ensure your naming matches your input object attribute (e.g., inputs.layout)
+        # =========================================================================
+        # CASCADING INTERNAL LOSS LOOP WITH DENSITY AND VELOCITY TRACKING
+        # =========================================================================
+        pt_current = pt_1
+        Tt_current = Tt_1
+
         for element in inputs.layout:
             elem_type = element["type"]
 
+            # 1. Get the element section area
+            area_elem = ElementArea(element)
+
+            # 2. Solve static properties entering this specific element
+            M_local, t_local, p_local, rho_local, v_local, mu_local = solve_local_states(
+                mdot=mdot_target_kg_s,
+                area=area_elem,
+                pt=pt_current,
+                Tt=Tt_current
+            )
+
+            # 3. Compute delta-P and delta-T across this element
+            #_ First reset for each new elements
+            dp_elem = 0.0
+            dTt_elem = 0.0
+
+            #_ Now deal with the element
             if elem_type == "pipe":
-                # Call straight duct loss function (Returns: k, dp, area)
+                # Frictional duct loss
                 _, dp_elem, _ = straight_duct_loss(
                     mdot=mdot_target_kg_s, 
-                    rho=rho_static_1, 
-                    mu=mu_static_1, 
+                    rho=rho_local, 
+                    mu=mu_local, 
                     length=element["length"], 
                     width=element["width"], 
                     height=element.get("height")
                 )
-                dp_internal_total += dp_elem
 
 
             elif elem_type == "bend":
-                # Call curved bend loss function (Fixed: removed mu, fixed unpacking)
+                # Centrifugal and wall friction bend loss
                 _, dp_elem, _ = bend_loss(
                     mdot=mdot_target_kg_s,
-                    rho=rho_static_1,
+                    rho=rho_local,
                     r_centerline=element["r_centerline"],
                     width=element["width"],
                     height=element.get("height")
                 )
-                dp_internal_total += dp_elem
 
 
             elif elem_type == "VentingBay":
-                # Just a bulk K loss model
-                dp_elem = element["KL"] * 0.5 * rho_static_1 * v_1**2
-                dp_internal_total += dp_elem
+                # Local dump loss (sudden expansion) based on entering dynamic pressure
+                q_local = 0.5 * rho_local * v_local**2
+                dp_elem = element["KL"] * q_local
 
 
             elif elem_type == "CoolingBay":
-                # Assuming plenum losses came from other pimping elements
-                dp_elem = 0.
-                dp_internal_total += dp_elem
-
-                # Assume equipment heat raises total temperature but does not
-                # directly impose an additional total-pressure penalty.
-                Tt_bay = T_max_K
+                # Thermal load updates total temperature
+                if T_max_K is not None:
+                    dTt_elem = T_max_K - Tt_current
 
 
             elif elem_type == "FanCooler":
-                # The pressure loss is provided by the supplier data.
-                dp_elem = dPtot_driven_Pa
-                dp_internal_total += dp_elem
+                # Active pressure deficit/loss across the unit
+                dp_elem = element["TotalPressureDrop_Pa"]
 
 
-            else:
-                raise ValueError(f"Unknown ducting element type encountered: {elem_type}")
+            # 4. Cascade the total states forward to the next element
+            pt_current = pt_current - dp_elem
+            Tt_current = Tt_current + dTt_elem
 
 
         # =========================================================================
-        # Node 2-A (Exit, Thermal demand)
+        # EXIT: Nozzle Plane Hand-off
         # =========================================================================
-        # Bay total pressure with losses
-        pt_bay = pt_1 - dp_internal_total       
-
-        # Node 2-B (Exit, Drop Model via Discharge Coefficient)
-        Tt_exit = Tt_bay
+        # The final total states leaving the very last element in your layout
+        pt_bay = pt_current
+        Tt_exit = Tt_current
 
         #_ Isentropic expansion from degraded bay total pressure to external static pressure
         rho_t_bay = max(pt_bay, p_static_ext_exit) / (R_gas * Tt_exit)
