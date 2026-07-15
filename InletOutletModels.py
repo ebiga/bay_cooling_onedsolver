@@ -239,8 +239,7 @@ def ElementArea(element):
 
 
     elif elem_type in ["VentingBay", "CoolingBay"]:
-        # we simply assume a very large value
-        area_elem = 999.0
+        area_elem = None
 
         diam_hydro = None
 

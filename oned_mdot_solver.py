@@ -76,12 +76,16 @@ def size_ventilation(mdot_target_kg_s, T_max_K=None, dPtot_driven_Pa=None):
         # =========================================================================
         pt_current = pt_1
         Tt_current = Tt_1
+        section_area = a_throat_guess
 
         for element in inputs.layout:
             elem_type = element["type"]
 
             # 1. Get the element section area
             area_elem, dh = ElementArea(element)
+
+            if not area_elem:
+                area_elem = section_area
 
             # 2. Solve static properties entering this specific element
             M_local, t_local, p_local, rho_local, v_local, mu_local = solve_local_states(
@@ -138,8 +142,9 @@ def size_ventilation(mdot_target_kg_s, T_max_K=None, dPtot_driven_Pa=None):
 
 
             # 4. Cascade the total states forward to the next element
-            pt_current = pt_current - dp_elem
-            Tt_current = Tt_current + dTt_elem
+            pt_current -= dp_elem
+            Tt_current += dTt_elem
+            section_area = area_elem
 
 
         # =========================================================================
