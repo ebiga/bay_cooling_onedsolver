@@ -81,7 +81,7 @@ def size_ventilation(mdot_target_kg_s, T_max_K=None, dPtot_driven_Pa=None):
             elem_type = element["type"]
 
             # 1. Get the element section area
-            area_elem = ElementArea(element)
+            area_elem, dh = ElementArea(element)
 
             # 2. Solve static properties entering this specific element
             M_local, t_local, p_local, rho_local, v_local, mu_local = solve_local_states(
@@ -99,24 +99,24 @@ def size_ventilation(mdot_target_kg_s, T_max_K=None, dPtot_driven_Pa=None):
             #_ Now deal with the element
             if elem_type == "pipe":
                 # Frictional duct loss
-                _, dp_elem, _ = straight_duct_loss(
-                    mdot=mdot_target_kg_s, 
-                    rho=rho_local, 
-                    mu=mu_local, 
-                    length=element["length"], 
-                    width=element["width"], 
-                    height=element.get("height")
+                _, dp_elem = straight_duct_loss(
+                    mdot=mdot_target_kg_s,
+                    rho=rho_local,
+                    mu=mu_local,
+                    length=element["length"],
+                    area=area_elem,
+                    diam_hydro=dh
                 )
 
 
             elif elem_type == "bend":
                 # Centrifugal and wall friction bend loss
-                _, dp_elem, _ = bend_loss(
+                _, dp_elem = bend_loss(
                     mdot=mdot_target_kg_s,
                     rho=rho_local,
                     r_centerline=element["r_centerline"],
-                    width=element["width"],
-                    height=element.get("height")
+                    area=area_elem,
+                    diam_hydro=dh
                 )
 
 
