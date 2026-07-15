@@ -20,7 +20,7 @@ def atmo(altitude_ft, dISA_degC):
     p_Pa = 101325. * ( 1. - 0.000022558*altitude_m )**5.2559
     T_K = 288.15 - 0.0065*altitude_m + dISA_degC
     rho_kg_m3 = p_Pa / (R_gas * T_K)
-    mu_kg_ms = 0.00001716 * (T_K/273.15)**1.5 * (273.15+110.)/(T_K+110.)
+    mu_kg_ms = ViscositySutherland(T_K)
 
     return p_Pa, T_K, rho_kg_m3, mu_kg_ms
 
@@ -52,3 +52,43 @@ def solve_throat_mach(mfr_target_kg_m3, S_throat_m2, Ptot_Pa, Ttot_Pa):
     MM = res.x[0]
 
     return MM
+
+
+
+def BoundaryLayerThickness(ReM, position):
+    """
+    Estimates the boundary layer thickess at a given position.
+    
+    Parameters:
+    ReM         : Reynolds number per unit length [1/m]
+    position    : Where to measure the boundary layer thickness [m]
+    """
+
+    return 0.37*position*((ReM*position)**-0.2)
+
+
+
+def ViscositySutherland(T_K):
+
+    return 0.00001716 * (T_K/273.15)**1.5 * (273.15+110.)/(T_K+110.)
+
+
+
+def solve_local_states(mdot, area, pt, Tt):
+    """
+    Calls solve_throat_mach to extract physical static properties for a given area.
+    """
+
+    # Get the local Mach number
+    M_local = solve_throat_mach(mdot, area, pt, Tt)
+    
+    # Compute the corresponding static thermodynamic state
+    isenM = 1.0 + 0.5 * gamm1 * M_local**2
+    
+    t_local = Tt / isenM
+    p_local = pt / (isenM**(gamma / gamm1))
+    rho_local = p_local / (R_gas * t_local)
+    v_local = M_local * math.sqrt(gamma * R_gas * t_local)
+    mu_local = ViscositySutherland(t_local)
+    
+    return M_local, t_local, p_local, rho_local, v_local, mu_local

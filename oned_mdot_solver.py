@@ -6,81 +6,162 @@ from auxfunctions import *
 from InletOutletModels import *
 
 
-def size_ventilation(mdot_target_kg_s, T_inf_K, p_inf_Pa, Mach, Cp_exit, outlet_type, T_max_K=None, k_sys=1.5):
+def size_ventilation(mdot_target_kg_s, T_max_K=None, dPtot_driven_Pa=None):
     """
     Sizes the required NACA inlet throat area to satisfy a target mfr and systems requirements.
     Calculates ram and spillage drag inline to support drag-targeted optimization routines.
     """
-    
+
+    # Get atmospheric conditions
+    p_inf_Pa, T_inf_K, rho_inf, mu = atmo(inputs.altitude_ft, inputs.dISA_K)
+
+
     # Freestream Aerodynamics & Stagnation States
     a_inf = math.sqrt(gamma * R_gas * T_inf_K)
-    v_inf = Mach * a_inf
+    v_inf = inputs.Mach * a_inf
     rho_inf = p_inf_Pa / (R_gas * T_inf_K)
-    
-    pt_inf = p_inf_Pa * (1.0 + gamm2 * Mach**2)**(gamma/gamm1)
-    Tt_inf = T_inf_K  * (1.0 + gamm2 * Mach**2)
+
+    pt_inf = p_inf_Pa * (1.0 + gamm2 * inputs.Mach**2)**(gamma/gamm1)
+    Tt_inf = T_inf_K  * (1.0 + gamm2 * inputs.Mach**2)
 
     qdin_inf = pt_inf - p_inf_Pa
 
 
     # External static pressure at the exit dump location
-    p_static_ext_exit = p_inf_Pa + Cp_exit * qdin_inf
+    p_static_ext_exit = p_inf_Pa + inputs.Cp_exit * qdin_inf
 
     # Local state tracking dictionary to capture the optimizer's current metrics
-    state_tracker = {
-        "drag_ram": 0.0,
-        "drag_spillage": 0.0,
-        "drag_total": 0.0
-    }
+    state_tracker = {}
     
-    def area_residual(x):
+    def evaluate_system_physics(x):
+        """
+        Executes the 1D aerothermal pipeline for a given geometry state.
+        """
 
         mfr = x[0]
-        
+        area_ratio = x[1]
+
         # Calculate target throat area base on current MFR iteration
         a_throat_guess = mdot_target_kg_s / (rho_inf * v_inf * mfr)
-        
-        a_exit = a_throat_guess * x[1]
-        
+        a_exit = a_throat_guess * area_ratio
+
+
         # Dynamic Inlet Total Pressure Recovery
-        eta_d, Cd_spill = naca_pressure_recovery(mfr)
+        #_ Boundary layer thickness
+        ReM = rho_inf * v_inf / mu
+        delta_bl = BoundaryLayerThickness(ReM, inputs.inlet_position_m)
+        
+        # Geometrical throat depth step for scaling calculation
+        # Assuming a rectangular aspect ratio width/height profile from your design rules
+        eta_d, Cd_spill = naca_pressure_recovery(mfr, delta=delta_bl, area=a_throat_guess)
 
         pt_1 = p_inf_Pa + eta_d * qdin_inf
         Tt_1 = Tt_inf  # ASSUMPTION: no total temp losses at the inlet
 
-        # Node 1 (Throat State)
+
+        # =========================================================================
+        # INLET: NACA throat
+        # =========================================================================
         m_1 = solve_throat_mach(mdot_target_kg_s, a_throat_guess, pt_1, Tt_1)
         t_static_1 = Tt_1 / (1.0 + gamm2 * m_1**2)
         p_static_1 = pt_1 / (1.0 + gamm2 * m_1**2)**(gamma/gamm1)
         rho_static_1 = p_static_1 / (R_gas * t_static_1)
         v_1 = m_1 * math.sqrt(gamma * R_gas * t_static_1)
 
-
-        # Losses: Friction
-        dp_friction = k_sys * (0.5 * rho_static_1 * v_1**2)
+        mu_static_1 = ViscositySutherland(t_static_1)
 
 
-        # Node 2-A (Exit, Thermal demand)
-        # Assume equipment heat raises total temperature but does not
-        # directly impose a total-pressure penalty.
-        Tt_bay = T_max_K if T_max_K else Tt_inf
+        # =========================================================================
+        # CASCADING INTERNAL LOSS LOOP WITH DENSITY AND VELOCITY TRACKING
+        # =========================================================================
+        pt_current = pt_1
+        Tt_current = Tt_1
 
-        # Bay total pressure with losses
-        pt_bay = pt_1 - dp_friction
-       
+        for element in inputs.layout:
+            elem_type = element["type"]
 
-        # Node 2-B (Exit, Drop Model via Discharge Coefficient)
-        Tt_exit = Tt_bay
+            # 1. Get the element section area
+            area_elem, dh = ElementArea(element)
+
+            # 2. Solve static properties entering this specific element
+            M_local, t_local, p_local, rho_local, v_local, mu_local = solve_local_states(
+                mdot=mdot_target_kg_s,
+                area=area_elem,
+                pt=pt_current,
+                Tt=Tt_current
+            )
+
+            # 3. Compute delta-P and delta-T across this element
+            #_ First reset for each new elements
+            dp_elem = 0.0
+            dTt_elem = 0.0
+
+            #_ Now deal with the element
+            if elem_type == "pipe":
+                # Frictional duct loss
+                _, dp_elem = straight_duct_loss(
+                    mdot=mdot_target_kg_s,
+                    rho=rho_local,
+                    mu=mu_local,
+                    length=element["length"],
+                    area=area_elem,
+                    diam_hydro=dh
+                )
+
+
+            elif elem_type == "bend":
+                # Centrifugal and wall friction bend loss
+                _, dp_elem = bend_loss(
+                    mdot=mdot_target_kg_s,
+                    rho=rho_local,
+                    r_centerline=element["r_centerline"],
+                    area=area_elem,
+                    diam_hydro=dh
+                )
+
+
+            elif elem_type == "VentingBay":
+                # Local dump loss (sudden expansion) based on entering dynamic pressure
+                q_local = 0.5 * rho_local * v_local**2
+                dp_elem = element["KL"] * q_local
+
+
+            elif elem_type == "CoolingBay":
+                # Thermal load updates total temperature
+                if T_max_K is not None:
+                    dTt_elem = T_max_K - Tt_current
+
+
+            elif elem_type == "FanCooler":
+                # Active pressure deficit/loss across the unit
+                dp_elem = element["TotalPressureDrop_Pa"]
+
+
+            # 4. Cascade the total states forward to the next element
+            pt_current = pt_current - dp_elem
+            Tt_current = Tt_current + dTt_elem
+
+
+        # =========================================================================
+        # EXIT: Nozzle Plane Hand-off
+        # =========================================================================
+        # The final total states leaving the very last element in your layout
+        pt_bay = pt_current
+        Tt_exit = Tt_current
 
         #_ Isentropic expansion from degraded bay total pressure to external static pressure
         rho_t_bay = max(pt_bay, p_static_ext_exit) / (R_gas * Tt_exit)
         rho_exit = rho_t_bay * (p_static_ext_exit / pt_bay)**(1.0 / gamma)
             
         v_exit_nominal = mdot_target_kg_s / (rho_exit * a_exit)
-        R_vel = v_exit_nominal / v_inf
-        
+
+        # MOMENTUM FLUX RATIO (J) & GEOMETRIC BOUNDARY LAYER SCALING
+        J = (rho_exit * v_exit_nominal**2) / (rho_inf * v_inf**2 * (1.0 - inputs.Cp_exit))
+
         # Nozzle effective discharge area
-        Cd = get_outlet_cd(outlet_type, R_vel)
+        delta_bl = BoundaryLayerThickness(ReM, inputs.outlet_position_m)
+
+        Cd = get_outlet_cd(inputs.outlet_type, J, delta=delta_bl, a_exit=a_exit)
         a_effective_exit = Cd * a_exit
 
         # Use the true corrected exit density for the dynamic backpressure delta P
@@ -93,13 +174,9 @@ def size_ventilation(mdot_target_kg_s, T_inf_K, p_inf_Pa, Mach, Cp_exit, outlet_
         
         # 2. Spillage Drag
         drag_spillage = Cd_spill * qdin_inf * a_throat_guess
-        
-        drag_total = drag_ram + drag_spillage
 
-        # Push to outer scope state tracking dictionary
-        state_tracker["drag_ram"] = drag_ram
-        state_tracker["drag_spillage"] = drag_spillage
-        state_tracker["drag_total"] = drag_total
+        # Total        
+        drag_total = drag_ram + drag_spillage
 
 
         # THE CONVERGENCE RESIDUAL:
@@ -107,11 +184,29 @@ def size_ventilation(mdot_target_kg_s, T_inf_K, p_inf_Pa, Mach, Cp_exit, outlet_
         # Hard Physical Constraint: Available pressure must drive the flow out to ambient
         error_pressure = abs((pt_bay - dp_outlet - p_static_ext_exit) / p_static_ext_exit)
 
-        error_naca_eff = abs((eta_d - 0.85)/0.85)
+        print(f"mfr: {mfr:.3e}, pressure err: {error_pressure:.3e}, naca eff: {eta_d:.3e}, outlet eff: {Cd:.3f}, drag: {drag_total:.2f}")
 
-        print(f"mfr: {mfr:.3e}, pressure err: {error_pressure:.3e}, naca eff err: {error_naca_eff:.3e}, outlet eff: {Cd:.3f}, drag: {drag_total:.2f}")
+        # Cache results for optimizer evaluation reads
+        state_tracker["drag_ram"] = drag_ram
+        state_tracker["drag_spillage"] = drag_spillage
+        state_tracker["drag_total"] = drag_total
+        state_tracker["error_pressure"] = error_pressure
+        state_tracker["inlet_area"] = a_throat_guess
+        state_tracker["outlet_area"] = a_exit
+        state_tracker["Cd"] = Cd
+        state_tracker["eta_d"] = eta_d
 
-        return error_pressure + error_naca_eff
+        return
+
+    # --- Optimizer Sub-Functions for SLSQP ---
+    def obj_drag(x):
+        evaluate_system_physics(x)
+        return state_tracker["drag_total"]
+
+    def const_pressure(x):
+        evaluate_system_physics(x)
+        return state_tracker["error_pressure"]
+
 
 
     # Solve for required area
@@ -119,26 +214,36 @@ def size_ventilation(mdot_target_kg_s, T_inf_K, p_inf_Pa, Mach, Cp_exit, outlet_
         mfr_bounds = ( 0.1, 1. )
         aexit_bounds = ( 0.5, 10. )
 
-        res = minimize( area_residual, x0=[0.5, 1.], method='Powell', bounds=[mfr_bounds, aexit_bounds])
+        # Define equality constraint: pressure residual must equal zero
+        constraints = {"type": "eq", "fun": const_pressure}
 
-        # Force a final evaluation at the exact converged minimum to update state_tracker
-        _ = area_residual(res.x)
+        res = minimize(
+            obj_drag, 
+            x0=[0.5, 1.0], 
+            method="SLSQP", 
+            bounds=[mfr_bounds, aexit_bounds],
+            constraints=constraints,
+            options={"ftol": 1e-8}
+        )
 
-        final_mfr = res.x[0]
+        if not res.success:
+            raise RuntimeError("SLSQP failed to converge constraints cleanly.")
 
-        inlet__area = mdot_target_kg_s / (rho_inf * v_inf * final_mfr)
-        outlet_area = res.x[1] * inlet__area
-        
+        # Ensure track states match the final optimized vector exactly
+        evaluate_system_physics(res.x)        
+
         return {
             "status": "Success",
             "mdot": mdot_target_kg_s,
-            "inlet__area_cm2": inlet__area * 10000.0,
-            "outlet_area_cm2": outlet_area * 10000.0,
-            "mfr": final_mfr,
+            "inlet__area_cm2": state_tracker["inlet_area"]  * 10000.0,
+            "outlet_area_cm2": state_tracker["outlet_area"] * 10000.0,
+            "mfr": res.x[0],
+            "outlet_cd": state_tracker["Cd"],
+            "inlet_eta": state_tracker["eta_d"],
             "drag_ram_N": state_tracker["drag_ram"],
             "drag_spillage_N": state_tracker["drag_spillage"],
-            "drag_total_N": state_tracker["drag_total"],
-        }
+            "drag_total_N": state_tracker["drag_total"],        }
+
     except Exception:
         return {
             "status": "Failed",
@@ -148,87 +253,71 @@ def size_ventilation(mdot_target_kg_s, T_inf_K, p_inf_Pa, Mach, Cp_exit, outlet_
 
 
 
-def run_case(
-    altitude_ft,
-    dISA_K,
-    Mach,
-    Cp_exit,
-    outlet_to_test,
-    BAY_VOLUME_M3,
-    T_SYSTEM_MAX_degC = None,
-    TARGET_ACPM = None,
-    Q_BAY_LOAD_W = None,
-):
+def run_case():
 
     # Get atmospheric data
-    p_inf, T_inf, rho_inf, _ = atmo(altitude_ft, dISA_K)
+    _, T_inf, rho_inf, _ = atmo(inputs.altitude_ft, inputs.dISA_K)
 
 
     # Compute the required mass flow rate
-    mdot_target_acpm = mdot_target_thermal = False
-
-    # Required MFR for: Ventilation
-    if TARGET_ACPM:
-        T_max_K = (T_SYSTEM_MAX_degC + 273.15) if T_SYSTEM_MAX_degC else None
-
-        vol_flow_rate_rps = (TARGET_ACPM / 60.0) * BAY_VOLUME_M3
-        mdot_target_acpm = rho_inf * vol_flow_rate_rps
-
-        print(f"  Mass Flow to vent: {mdot_target_acpm:.4f} kg/s")
-
-    # Required MFR for: Cooling
-    if Q_BAY_LOAD_W:
-        try:
-            T_max_K = T_SYSTEM_MAX_degC + 273.15
-        except Exception:
-            return {
-                "status": "Failed",
-                "reason": "Q_BAY_LOAD_W also requires T_SYSTEM_MAX_degC to be defined."
-            }
-
-        Tt_inf = T_inf * (1.0 + gamm2 * Mach**2)
-        dT_allowed = T_max_K - Tt_inf
-        mdot_target_thermal = Q_BAY_LOAD_W / (cp_air * dT_allowed)
-
-        print(f"  Mass Flow to cool: {mdot_target_thermal:.4f} kg/s")
-
     # The target massflow rate is the highest
-    try:
-        mdot_target = max(mdot_target_acpm, mdot_target_thermal)
-    except Exception:
-        return {
-            "status": "Failed",
-            "reason": "No TARGET_ACPM and/or Q_BAY_LOAD_W defined."
-        }
+    mdot_target = 0.
 
+
+    # LOOP THE INPUT AND DETERMINE THE CASES
+    for item in inputs.layout:
+
+        # Required MFR for: Ventilation
+        if item.get("type") == "VentingBay":
+            BAY_VOLUME_M3 = item["BAY_VOLUME_M3"]
+            TARGET_ACPM   = item["TARGET_ACPM"]
+    
+            T_max_K = None
+            dPtot_driven_Pa = None
+
+            vol_flow_rate_rps = (TARGET_ACPM / 60.0) * BAY_VOLUME_M3
+            mdot_target_acpm = rho_inf * vol_flow_rate_rps
+
+            mdot_target = max(mdot_target, mdot_target_acpm)
+
+            print(f"  Mass Flow to vent: {mdot_target_acpm:.4f} kg/s")
+
+        # Required MFR for: Cooling
+        if item.get("type") == "CoolingBay":
+            T_SYSTEM_MAX_degC = item["T_SYSTEM_MAX_degC"]
+            Q_BAY_LOAD_W      = item["Q_BAY_LOAD_W"]
+
+            T_max_K = T_SYSTEM_MAX_degC + 273.15
+            dPtot_driven_Pa = None
+
+            Tt_inf = T_inf * (1.0 + gamm2 * inputs.Mach**2)
+            dT_allowed = T_max_K - Tt_inf
+            mdot_target_thermal = Q_BAY_LOAD_W / (cp_air * dT_allowed)
+
+            mdot_target = max(mdot_target, mdot_target_thermal)
+
+            print(f"  Mass Flow to cool: {mdot_target_thermal:.4f} kg/s")
+
+        # Required MFR for: Fan Blower
+        if item.get("type") == "FanCooler":
+            mdot_target_fan = item["MassFlowRate_kg_s"]
+            dPtot_driven_Pa = item["TotalPressureDrop_Pa"]
+
+            T_max_K = None
+
+            mdot_target = max(mdot_target, mdot_target_fan)
+
+            print(f"  Mass Flow to fan: {mdot_target_fan:.4f} kg/s")
 
     # Find the appropriate inlet and outlet areas.
-    res = size_ventilation(
-        mdot_target,
-        T_inf,
-        p_inf,
-        Mach,
-        Cp_exit,
-        outlet_to_test,
-        T_max_K,
-    )
+    res = size_ventilation(mdot_target_kg_s=mdot_target, T_max_K=T_max_K, dPtot_driven_Pa=dPtot_driven_Pa)
 
     return res
 
 
 if __name__ == "__main__":
 
-    res = run_case(
-        altitude_ft=10000.,
-        dISA_K=15.,
-        Mach=0.25,
-        Cp_exit=0.,
-        outlet_to_test="OutletParallelRamp",
-        BAY_VOLUME_M3=2.29,
-        T_SYSTEM_MAX_degC=32.0,
-        TARGET_ACPM=5.0,
-        Q_BAY_LOAD_W=3000.,
-    )
+    res = run_case()
 
     if res["status"] == "Success":
         print(f"  Target Mass Flow : {res['mdot']:.4f} kg/s")
