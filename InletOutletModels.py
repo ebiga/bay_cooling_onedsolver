@@ -5,7 +5,7 @@ import inputs
 
 
 
-def naca_pressure_recovery(mfr, delta=0, area=None, C_vortex=2.0, aspect_r=4):
+def naca_pressure_recovery(mfr, Machinf, delta=0, area=None, C_vortex=2.0, aspect_r=4):
     """
     Empirical fit for standard NACA submerged flush inlet pressure recovery.
     Based on the classics, NACA RM A7I30 / NACA ACR 5120
@@ -28,9 +28,12 @@ def naca_pressure_recovery(mfr, delta=0, area=None, C_vortex=2.0, aspect_r=4):
     # Clip for safety
     mfr = max(1e-4, min(mfr, 1.))
 
+
     # Kinematic spillage
-    K_spill = 0.4
-    Cd_spill = K_spill * (1.0 - mfr)**2
+    # Modelled according to AGARD-AG-264
+    Cd0 = 0.175 / (1. - Machinf**2.)
+    Cdcorr = 0.35 * (1 - (1-mfr)**2.)
+    Cd_spill = Cd0 - Cdcorr
 
 
     if delta > 0:

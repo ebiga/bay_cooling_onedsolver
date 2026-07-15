@@ -52,8 +52,8 @@ def size_ventilation(mdot_target_kg_s, T_max_K=None, dPtot_driven_Pa=None):
         delta_bl = BoundaryLayerThickness(ReM, inputs.inlet_position_m)
         
         # Geometrical throat depth step for scaling calculation
-        # Assuming a rectangular aspect ratio width/height profile from your design rules
-        eta_d, Cd_spill = naca_pressure_recovery(mfr, delta=delta_bl, area=a_throat_guess)
+        #_ For now assuming the local Mach as freestream Mach
+        eta_d, Cd_spill = naca_pressure_recovery(mfr=mfr, Machinf=inputs.Mach, delta=delta_bl, area=a_throat_guess)
 
         pt_1 = p_inf_Pa + eta_d * qdin_inf
         Tt_1 = Tt_inf  # ASSUMPTION: no total temp losses at the inlet
