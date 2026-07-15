@@ -151,27 +151,20 @@ def get_outlet_cd(outlet_type, J, delta=0, a_exit=None, aspect_r=4, porosity=0.6
 
 
 
-def straight_duct_loss(mdot, rho, mu, length, width, height=None, roughness=0.0015e-3):
+def straight_duct_loss(mdot, rho, mu, length, area, diam_hydro, roughness=0.0015e-3):
     """
     Computes total pressure loss for a straight duct section using the 
     explicit Churchill (1977) friction correlation across all flow regimes.
     Supports both rectangular and circular geometry profiles.
     """
-    if height is not None:
-        area = width * height
-        perimeter = 2.0 * (width + height)
-        dh = (4.0 * area) / perimeter
-    else:
-        area = (math.pi * width**2) / 4.0
-        dh = width
 
     # Local velocity and dynamic pressure
     v = mdot / (rho * area)
     q = 0.5 * rho * v**2
     
     # Safeguard Reynolds number limits against low or zero flow bounds
-    re = max(10.0, (rho * v * dh) / max(1e-7, mu))
-    rel_roughness = roughness / dh
+    re = max(10.0, (rho * v * diam_hydro) / max(1e-7, mu))
+    rel_roughness = roughness / diam_hydro
 
     # Churchill Correlation Sub-components (eliminates transcendental iteration loops)
     term_a_inner = (7.0 / re)**0.9 + 0.27 * rel_roughness
@@ -181,34 +174,78 @@ def straight_duct_loss(mdot, rho, mu, length, width, height=None, roughness=0.00
     
     f = 8.0 * ((8.0 / re)**12 + 1.0 / ((A + B)**1.5))**(1.0 / 12.0)
     
-    k_duct = f * (length / dh)
+    k_duct = f * (length / diam_hydro)
     dp_duct = k_duct * q
     
-    return k_duct, dp_duct, area
+    return k_duct, dp_duct
 
 
 
-def bend_loss(mdot, rho, r_centerline, width, height=None):
+def bend_loss(mdot, rho, r_centerline, area, diam_hydro):
     """
     Computes total pressure loss across a 90-degree bend based on geometric sharpness.
     Uses a standard empirical curve-fit optimized for clean ducting networks.
     """
-    if height is not None:
-        area = width * height
-        perimeter = 2.0 * (width + height)
-        dh = (4.0 * area) / perimeter
-    else:
-        area = (math.pi * width**2) / 4.0
-        dh = width
 
+    # Local velocity and dynamic pressure
     v = mdot / (rho * area)
     q = 0.5 * rho * v**2
     
     # Enforce minimum curvature ratio to avoid math runtime issues
-    r_ratio = max(0.1, r_centerline / dh)
+    r_ratio = max(0.1, r_centerline / diam_hydro)
     
     # Idelchik-aligned bend loss formulation
     k_bend = 0.131 + 0.163 * (1.0 / r_ratio)**3.5
     dp_bend = k_bend * q
     
-    return k_bend, dp_bend, area
+    return k_bend, dp_bend
+
+
+
+def ElementArea(element):
+    '''
+    Determine local cross-sectional flow area for different elements.
+
+    Input: element from 'layout' list in inputs.py
+    Output:     area, in m2
+                hydraulic diameter, in m
+    '''
+
+    elem_type = element["type"]
+
+
+    if elem_type in ["pipe", "bend"]:
+        width = element["width"]
+        height = element.get("height")
+
+        if height:
+            # Rectangular cross section
+            area_elem = width * height
+
+            perimeter = 2.0 * (width + height)
+            diam_hydro = (4.0 * area_elem) / perimeter
+
+        else:
+            # Circular cross section
+            area_elem = (math.pi * width**2) / 4.0
+
+            diam_hydro = width
+
+
+    elif elem_type == "FanCooler":
+        area_elem = element["FanArea_m2"]
+
+        diam_hydro = None
+
+
+    elif elem_type in ["VentingBay", "CoolingBay"]:
+        # we simply assume a very large value
+        area_elem = 999.0
+
+        diam_hydro = None
+
+    else:
+        raise ValueError(f"Unknown ducting element: {elem_type}")
+    
+
+    return area_elem, diam_hydro

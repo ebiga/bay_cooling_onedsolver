@@ -71,3 +71,24 @@ def BoundaryLayerThickness(ReM, position):
 def ViscositySutherland(T_K):
 
     return 0.00001716 * (T_K/273.15)**1.5 * (273.15+110.)/(T_K+110.)
+
+
+
+def solve_local_states(mdot, area, pt, Tt):
+    """
+    Calls solve_throat_mach to extract physical static properties for a given area.
+    """
+
+    # Get the local Mach number
+    M_local = solve_throat_mach(mdot, area, pt, Tt)
+    
+    # Compute the corresponding static thermodynamic state
+    isenM = 1.0 + 0.5 * gamm1 * M_local**2
+    
+    t_local = Tt / isenM
+    p_local = pt / (isenM**(gamma / gamm1))
+    rho_local = p_local / (R_gas * t_local)
+    v_local = M_local * math.sqrt(gamma * R_gas * t_local)
+    mu_local = ViscositySutherland(t_local)
+    
+    return M_local, t_local, p_local, rho_local, v_local, mu_local
