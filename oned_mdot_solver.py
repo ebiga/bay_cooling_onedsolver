@@ -166,8 +166,8 @@ def size_ventilation(mdot_target_kg_s, T_max_K=None, dPtot_driven_Pa=None):
         # Nozzle effective discharge area
         delta_bl = BoundaryLayerThickness(ReM, inputs.outlet_position_m)
 
-        Cd = get_outlet_cd(inputs.outlet_type, J, delta=delta_bl, a_exit=a_exit)
-        a_effective_exit = Cd * a_exit
+        Cdischarge, CD_base, A_base = get_outlet_cd(inputs.outlet_type, J, delta=delta_bl, a_exit=a_exit)
+        a_effective_exit = Cdischarge * a_exit
 
         # Use the true corrected exit density for the dynamic backpressure delta P
         dp_outlet = (mdot_target_kg_s**2) / (2.0 * rho_exit * (a_effective_exit)**2)
@@ -180,8 +180,11 @@ def size_ventilation(mdot_target_kg_s, T_max_K=None, dPtot_driven_Pa=None):
         # 2. Spillage Drag
         drag_spillage = Cd_spill * qdin_inf * a_throat_guess
 
+        # 3. Discharge drag
+        drag_base = CD_base * qdin_inf * A_base
+
         # Total        
-        drag_total = drag_ram + drag_spillage
+        drag_total = drag_ram + drag_spillage + drag_base
 
 
         # THE CONVERGENCE RESIDUAL:
@@ -189,7 +192,7 @@ def size_ventilation(mdot_target_kg_s, T_max_K=None, dPtot_driven_Pa=None):
         # Hard Physical Constraint: Available pressure must drive the flow out to ambient
         error_pressure = abs((pt_bay - dp_outlet - p_static_ext_exit) / p_static_ext_exit)
 
-        print(f"mfr: {mfr:.3e}, pressure err: {error_pressure:.3e}, naca eff: {eta_d:.3e}, outlet eff: {Cd:.3f}, drag: {drag_total:.2f}")
+        print(f"mfr: {mfr:.3e}, pressure err: {error_pressure:.3e}, naca eff: {eta_d:.3e}, outlet eff: {Cdischarge:.3f}, drag: {drag_total:.2f}")
 
         # Cache results for optimizer evaluation reads
         state_tracker["drag_ram"] = drag_ram
@@ -198,7 +201,7 @@ def size_ventilation(mdot_target_kg_s, T_max_K=None, dPtot_driven_Pa=None):
         state_tracker["error_pressure"] = error_pressure
         state_tracker["inlet_area"] = a_throat_guess
         state_tracker["outlet_area"] = a_exit
-        state_tracker["Cd"] = Cd
+        state_tracker["Cdischarge"] = Cdischarge
         state_tracker["eta_d"] = eta_d
 
         return
@@ -243,7 +246,7 @@ def size_ventilation(mdot_target_kg_s, T_max_K=None, dPtot_driven_Pa=None):
             "inlet__area_cm2": state_tracker["inlet_area"]  * 10000.0,
             "outlet_area_cm2": state_tracker["outlet_area"] * 10000.0,
             "mfr": res.x[0],
-            "outlet_cd": state_tracker["Cd"],
+            "outlet_cd": state_tracker["Cdischarge"],
             "inlet_eta": state_tracker["eta_d"],
             "drag_ram_N": state_tracker["drag_ram"],
             "drag_spillage_N": state_tracker["drag_spillage"],
