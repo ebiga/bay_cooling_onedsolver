@@ -30,9 +30,13 @@ def naca_pressure_recovery(mfr, Machinf, delta=0, area=None, C_vortex=2.0, aspec
 
 
     # Kinematic spillage
-    # Modelled according to AGARD-AG-264
-    Cd0 = 0.175 / (1. - Machinf**2.)
+    # Modelled according to AGARD-AG-264 data in Fig. 6.9, incl compressibility.
+    m_squared_limit = min(0.95, Machinf**2)
+    la_factor = 1.0 - m_squared_limit
+
+    Cd0 = 0.175 / la_factor
     Cdcorr = 0.35 * (1 - (1-mfr)**2.)
+
     Cd_spill = Cd0 - Cdcorr
 
 
