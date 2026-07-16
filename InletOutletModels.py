@@ -92,16 +92,18 @@ def naca_pressure_recovery(mfr, Machinf, delta=0, area=None, C_vortex=2.0, aspec
 
 
 
-def get_outlet_cd(outlet_type, J, delta=0., a_exit=None, aspect_r=4., porosity=0.6):
+def get_outlet_cd(outlet_type, J, Machinf, delta=0., a_exit=None, aspect_r=4., porosity=0.6):
     """
-    Determine the dynamic discharge coefficient (Cd) and dynamic base drag properties
+    Determine the dynamic discharge coefficient (Cd) and static base drag properties
     for different outlet configurations under external crossflow.
 
-    The discharge coefficient is defined on exit area correction:
-        Area_actual = Area_ideal * Cd
+    The discharge coefficient remains dynamic with respect to J.
+
+    The base drag coefficient is evaluated at J=0 (mfr=0) to prevent double-counting 
+    the thrust/ram-drag terms, corrected for Mach number using AGARD-AG-264.
 
     The base drag is modeled as:
-        Drag_base = Cd_base * q_inf * area_base
+        Drag_base = Cd_base * q_inf * a_exit
 
     Parameters:
     -----------
@@ -111,15 +113,17 @@ def get_outlet_cd(outlet_type, J, delta=0., a_exit=None, aspect_r=4., porosity=0
     a_exit      : float -> Area of the exit nozzle opening [m2]
     aspect_r    : float -> Outlet throat aspect ratio (typically in the range 3:1 to 5:1)
     porosity    : float -> Open area ratio (only applied to the OutletGrill branch)
+    Machinf     : float -> Freestream Mach number for compressibility corrections [-]
 
     Returns:
     --------
     cd          : float -> Dynamic discharge coefficient [-]
-    Cd_base     : float -> Dynamic base drag coefficient (referenced to q_inf and area_base) [-]
+    Cd_base     : float -> Static base drag coefficient at J=0 (referenced to q_inf and area_base) [-]
     area_base   : float -> Statistically/geometrically derived solid base area [m2]
     """
 
 
+    # BOUNDARY LAYER SETUP
     # Extract exit plane height to calculate non-dimensional boundary layer thickness
     h_exit = math.sqrt(a_exit / aspect_r)
 
@@ -146,6 +150,14 @@ def get_outlet_cd(outlet_type, J, delta=0., a_exit=None, aspect_r=4., porosity=0
     shielding = f_v * f_v
 
 
+    # Compressibility correction terms
+    m_squared_limit = min(0.95, Machinf**2)
+    # Prandtl-Glauert
+    pg_factor = math.sqrt(1.0 - m_squared_limit)
+
+
+
+    # OUTLET TYPE EVALUATION
     if outlet_type == "OutletInvertedScoop":
         # --- DISCHARGE COEFFICIENT ---
         # Ref: Hoerner, S.F., "Fluid-Dynamic Drag," 1965. 
@@ -157,14 +169,9 @@ def get_outlet_cd(outlet_type, J, delta=0., a_exit=None, aspect_r=4., porosity=0
         cd = cd_max - 0.05 * math.exp(-sqrt_J)
         
         # --- BASE DRAG ---
-        # Physical model: A protruding cowl creates a high-pressure recovery region ahead, 
-        # but a massive rearward separation wake. As jet outflow increases (sqrt_J), base 
-        # pressure recovers due to jet entrainment (base bleed).
-        # Base area: Estimated as the projected rearward solid lip/cowl frontal area (~15% of exit)
-        area_base = a_exit * 0.15
-        Cd_base_0 = 0.22      # Static base drag of raw cowl profile
-        k_bleed = 1.5         # Moderate bleed efficacy due to protrusion
-        Cd_base = Cd_base_0 * shielding * math.exp(-k_bleed * sqrt_J_eff)
+        # Ref: AGARD-AG-264, Section 6.3.2 ("Scoop Outlets"), Fig. 6.14 df=20 AF=1.
+        Cd_base_0 = 0.25
+        Cd_base = (Cd_base_0 / pg_factor) * shielding
         
     elif outlet_type == "OutletParallelRamp":
         # --- DISCHARGE COEFFICIENT ---
@@ -175,13 +182,9 @@ def get_outlet_cd(outlet_type, J, delta=0., a_exit=None, aspect_r=4., porosity=0
         cd = 0.62 * (1.0 - 0.60 * math.exp(-2.0 * sqrt_J_eff))
         
         # --- BASE DRAG ---
-        # Physical model: Sits completely flush with the boundary layer. The only physical base 
-        # is the blunt splitter-lip thickness. Parallel jet flow quickly re-energizes this wake.
-        # Base area: Set as the trailing-edge splitter thickness area (~5% of exit)
-        area_base = a_exit * 0.05
-        Cd_base_0 = 0.08      # Very low static drag due to flush profile
-        k_bleed = 2.5         # Highly effective base bleed because flow is parallel to lip
-        Cd_base = Cd_base_0 * shielding * math.exp(-k_bleed * sqrt_J_eff)
+        # Ref: AGARD-AG-264, Section 6.3.1 ("Flush Outlets"), Fig.6.21.
+        Cd_base_0 = 0.12
+        Cd_base = (Cd_base_0 / pg_factor) * shielding
         
     elif outlet_type == "OutletDivergentRamp":
         # --- DISCHARGE COEFFICIENT ---
@@ -192,13 +195,9 @@ def get_outlet_cd(outlet_type, J, delta=0., a_exit=None, aspect_r=4., porosity=0
         cd = 0.70 * (1.0 - 0.40 * math.exp(-2.5 * sqrt_J_eff))
         
         # --- BASE DRAG ---
-        # Physical model: Diverging sidewalls create localized boundary layer growth/separation 
-        # prior to ejection, leading to slightly higher static wake drag than the parallel slot.
-        # Base area: Set as the trailing edge/ramp termination step (~8% of exit)
-        area_base = a_exit * 0.08
-        Cd_base_0 = 0.12      # Moderate static drag from diffusion step
-        k_bleed = 2.0         # Slightly degraded base bleed due to diffusion angles
-        Cd_base = Cd_base_0 * shielding * math.exp(-k_bleed * sqrt_J_eff)
+        # Ref: AGARD-AG-264, Section 6.3.1 ("Flush Outlets"), Fig.6.21.
+        Cd_base_0 = 0.12
+        Cd_base = (Cd_base_0 / pg_factor) * shielding
         
     elif outlet_type == "OutletGrill":
         # --- DISCHARGE COEFFICIENT ---
@@ -212,20 +211,14 @@ def get_outlet_cd(outlet_type, J, delta=0., a_exit=None, aspect_r=4., porosity=0
         cd = Cd_baseline / math.sqrt(1.0 + 1.1 * vr_eff**2)        
         
         # --- BASE DRAG ---
-        # Physical model: Grill bars act as localized bluff bodies transverse to the external 
-        # crossflow. High static drag is generated by the solid blockages. Blowing bleed is 
-        # highly effective at reducing separation, but turning skin losses maintain a small floor.
-        # Base area: Calculated directly from the solid frontal area (1.0 - porosity)
-        area_base = a_exit * (1.0 - porosity)
-        Cd_base_0 = 0.32      # High blunt body static drag of the bar matrix
-        k_bleed = 1.8         # Decent bleed effect through discrete holes
-        Cd_base_dyn = Cd_base_0 * shielding * math.exp(-k_bleed * sqrt_J_eff)
-        Cd_base = max(0.02, Cd_base_dyn) # Base drag floor to capture turning/skin friction losses
+        # Ref: AGARD-AG-264, Section 6.3.1 ("Flush Outlets"), Fig.6.21.
+        Cd_base_0 = 0.12
+        Cd_base = (Cd_base_0 / pg_factor) * shielding
 
     else:
         raise ValueError(f"Unknown outlet type: {outlet_type}")
 
-    return cd, Cd_base, area_base
+    return cd, Cd_base
 
 
 
