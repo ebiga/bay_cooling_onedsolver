@@ -96,6 +96,7 @@ def get_outlet_cd(outlet_type, J, Machinf, delta=0., a_exit=None, aspect_r=4., p
     """
     Determine the dynamic discharge coefficient (Cd) and static base drag properties
     for different outlet configurations under external crossflow.
+    Data based on: NACA TN-3466.
 
     The discharge coefficient remains dynamic with respect to J.
 
@@ -160,59 +161,38 @@ def get_outlet_cd(outlet_type, J, Machinf, delta=0., a_exit=None, aspect_r=4., p
     # OUTLET TYPE EVALUATION
     if outlet_type == "OutletInvertedScoop":
         # --- DISCHARGE COEFFICIENT ---
-        # Ref: Hoerner, S.F., "Fluid-Dynamic Drag," 1965. 
-        #      Chapter XI ("Internal-Flow Systems"), Section 4 ("Outlets"), pp. 11-15.
-        # Ref: Henry, J.R., "Design of Power-Plant Installations: Pressure-Loss and Drag 
-        #      Estimates of Inlet and Outlet Ducts," NACA Wartime Report L-344 (originally 
-        #      issued as ACR 5I20), pp. 23-28, 1945.
-        cd_max = 0.80 - 0.08 * min(0.5, bar_delta)
-        cd = cd_max - 0.05 * math.exp(-sqrt_J)
-        
+        # Ref: NACA TN-3466, Fig.18, M0.7, flush 3.
+        mfr = [0.192, 0.220, 0.248, 0.280, 0.349, 0.434, 0.490, 0.600, 0.689, 0.799, 0.903]
+        K__ = [1.398, 1.170, 0.988, 0.831, 0.761, 0.797, 0.812, 0.785, 0.776, 0.782, 0.808]
+        cd = np.interp(sqrt_J_eff, mfr, K__)
+
         # --- BASE DRAG ---
         # Ref: AGARD-AG-264, Section 6.3.2 ("Scoop Outlets"), Fig. 6.14 df=20 AF=1.
         Cd_base_0 = 0.25
         Cd_base = (Cd_base_0 / pg_factor) * shielding
-        
+
     elif outlet_type == "OutletParallelRamp":
         # --- DISCHARGE COEFFICIENT ---
-        # Ref: ESDU 86002, "Drag and mass flow of internal flow systems: flush-mounted outlets," 
-        #      Section 5 (Discharge Characteristics of Flush Rectangular Slots), pp. 8-12.
-        # Ref: Wornom, D.E., "Discharge Coefficients of Various Outer-Skin Outlets for Aircraft," 
-        #      NACA Technical Note 3924, pp. 11-14, 1957.
-        cd = 0.62 * (1.0 - 0.60 * math.exp(-2.0 * sqrt_J_eff))
-        
+        # Ref: NACA TN-3466, Fig.12, M0.7, flush 4.
+        mfr = [0., 0.252, 0.359, 0.484, 0.577, 0.708, 0.857]
+        K__ = [0., 0.560, 0.669, 0.776, 0.828, 0.878, 0.913]
+        cd = np.interp(sqrt_J_eff, mfr, K__)
+
         # --- BASE DRAG ---
         # Ref: AGARD-AG-264, Section 6.3.1 ("Flush Outlets"), Fig.6.21.
         Cd_base_0 = 0.12
         Cd_base = (Cd_base_0 / pg_factor) * shielding
-        
-    elif outlet_type == "OutletDivergentRamp":
-        # --- DISCHARGE COEFFICIENT ---
-        # Ref: ESDU 86002, "Drag and mass flow of internal flow systems: flush-mounted outlets," 
-        #      Section 6 (Divergent Ramp Outlets), pp. 14-17.
-        # Ref: Wornom, D.E., "Discharge Coefficients of Various Outer-Skin Outlets for Aircraft," 
-        #      NACA Technical Note 3924, pp. 15-18, 1957.
-        cd = 0.70 * (1.0 - 0.40 * math.exp(-2.5 * sqrt_J_eff))
-        
-        # --- BASE DRAG ---
-        # Ref: AGARD-AG-264, Section 6.3.1 ("Flush Outlets"), Fig.6.21.
-        Cd_base_0 = 0.12
-        Cd_base = (Cd_base_0 / pg_factor) * shielding
-        
+
     elif outlet_type == "OutletGrill":
         # --- DISCHARGE COEFFICIENT ---
-        # Ref: Dittrich, R.T., and Graves, C.C., "Discharge Coefficients for Combustor-Liner 
-        #      Orifices. I - Circular Orifices with Parallel Flow," NACA Technical Note 3663, 
-        #      pp. 12-16, 1956.
-        # Ref: Gritsch, M. et al., "Discharge Coefficient Measurements of Waved-Edge and 
-        #      Standard Film Cooling Holes," ASME Paper No. 98-GT-541, 1998.
-        Cd_baseline = 0.62 * porosity
-        vr_eff = 1.0 / max(1e-3, sqrt_J_eff)
-        cd = Cd_baseline / math.sqrt(1.0 + 1.1 * vr_eff**2)        
-        
+        # Ref: NACA TN-3466, Fig.6, M0.7, AR 6.
+        mfr = [0., 0.177, 0.251, 0.396, 0.525, 0.655]
+        K__ = [0., 0.346, 0.439, 0.554, 0.642, 0.680]
+        cd = np.interp(sqrt_J_eff, mfr, K__)
+
         # --- BASE DRAG ---
-        # Ref: AGARD-AG-264, Section 6.3.1 ("Flush Outlets"), Fig.6.21.
-        Cd_base_0 = 0.12
+        # Ref: AGARD-AG-264, Section 6.3.1 ("Flush Outlets").
+        Cd_base_0 = 0.01
         Cd_base = (Cd_base_0 / pg_factor) * shielding
 
     else:
