@@ -85,7 +85,7 @@ def naca_pressure_recovery(mfr, Machinf, delta=0, area=None, aspect_r=4):
 
 
 
-def get_outlet_cd(outlet_type, J, Machinf):
+def get_outlet_cd(outlet_type, J, Mach_e):
     """
     Determine the dynamic discharge coefficient (Cd) and static base drag properties
     for different outlet configurations under external crossflow.
@@ -102,7 +102,7 @@ def get_outlet_cd(outlet_type, J, Machinf):
     Parameters:
     outlet_type : OutletInvertedScoop, OutletParallelRamp, OutletGrill
     J           : Momentum flux ratio ((rho_exit * V_exit^2) / (rho_inf * V_inf^2))
-    Machinf     : Freestream Mach number for compressibility corrections [-]
+    Mach_e      : Exit "freestream" Mach number for compressibility corrections [-]
 
     Returns:
     cd          : Dynamic discharge coefficient [-]
@@ -115,7 +115,7 @@ def get_outlet_cd(outlet_type, J, Machinf):
 
 
     # Compressibility correction terms
-    m_squared_limit = min(0.95, Machinf**2)
+    m_squared_limit = min(0.95, Mach_e**2)
     # Prandtl-Glauert
     pg_factor = math.sqrt(1.0 - m_squared_limit)
 
