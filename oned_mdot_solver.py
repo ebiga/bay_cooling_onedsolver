@@ -164,9 +164,7 @@ def size_ventilation(mdot_target_kg_s, T_max_K=None, dPtot_driven_Pa=None):
         J = (rho_exit * v_exit_nominal**2) / (rho_inf * v_inf**2 * (1.0 - inputs.Cp_exit))
 
         # Nozzle effective discharge area
-        delta_bl = BoundaryLayerThickness(ReM, inputs.outlet_position_m)
-
-        Cdischarge, CD_base = get_outlet_cd(outlet_type=inputs.outlet_type, J=J, Machinf=inputs.Mach, delta=delta_bl, a_exit=a_exit)
+        Cdischarge, CD_base = get_outlet_cd(outlet_type=inputs.outlet_type, J=J, Machinf=inputs.Mach)
         a_effective_exit = Cdischarge * a_exit
 
         # Use the true corrected exit density for the dynamic backpressure delta P
