@@ -9,6 +9,7 @@ inlet_position_m=6.
 
 
 # Outlet Information
+# Option types: OutletInvertedScoop, OutletParallelRamp, OutletGrill
 outlet_position_m=5.
 Cp_exit=-0.1
 outlet_type="OutletParallelRamp"

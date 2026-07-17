@@ -5,7 +5,7 @@ import inputs
 
 
 
-def naca_pressure_recovery(mfr, delta=0, area=None, C_vortex=2.0, aspect_r=4):
+def naca_pressure_recovery(mfr, Machinf, delta=0, area=None, C_vortex=2.0, aspect_r=4):
     """
     Empirical fit for standard NACA submerged flush inlet pressure recovery.
     Based on the classics, NACA RM A7I30 / NACA ACR 5120
@@ -28,9 +28,16 @@ def naca_pressure_recovery(mfr, delta=0, area=None, C_vortex=2.0, aspect_r=4):
     # Clip for safety
     mfr = max(1e-4, min(mfr, 1.))
 
+
     # Kinematic spillage
-    K_spill = 0.4
-    Cd_spill = K_spill * (1.0 - mfr)**2
+    # Modelled according to AGARD-AG-264 data in Fig. 6.9, incl compressibility.
+    m_squared_limit = min(0.95, Machinf**2)
+    la_factor = 1.0 - m_squared_limit
+
+    Cd0 = 0.175 / la_factor
+    Cdcorr = 0.35 * (1 - (1-mfr)**2.)
+
+    Cd_spill = Cd0 - Cdcorr
 
 
     if delta > 0:
@@ -85,16 +92,20 @@ def naca_pressure_recovery(mfr, delta=0, area=None, C_vortex=2.0, aspect_r=4):
 
 
 
-def get_outlet_cd(outlet_type, J, delta=0, a_exit=None, aspect_r=4, porosity=0.6):
+def get_outlet_cd(outlet_type, J, Machinf, delta=0., a_exit=None, aspect_r=4., porosity=0.6):
     """
-    The discharge coefficient is defined on exit area correction:
-        Area_actual = Area_ideal * Cd
-    Returns the dynamic discharge coefficient adjusted for external crossflow
-    momentum flux ratio (J) and incoming boundary layer immersion (delta).
+    Determine the dynamic discharge coefficient (Cd) and static base drag properties
+    for different outlet configurations under external crossflow.
+    Data based on: NACA TN-3466.
 
-    The boundary layer physics are modeled via analytical integration of a 
-    turbulent 1/7th power-law velocity profile over the nozzle height.
-    
+    The discharge coefficient remains dynamic with respect to J.
+
+    The base drag coefficient is evaluated at J=0 (mfr=0) to prevent double-counting 
+    the thrust/ram-drag terms, corrected for Mach number using AGARD-AG-264.
+
+    The base drag is modeled as:
+        Drag_base = Cd_base * q_inf * a_exit
+
     Parameters:
     -----------
     outlet_type : str   -> "OutletInvertedScoop", "OutletParallelRamp", etc.
@@ -103,8 +114,17 @@ def get_outlet_cd(outlet_type, J, delta=0, a_exit=None, aspect_r=4, porosity=0.6
     a_exit      : float -> Area of the exit nozzle opening [m2]
     aspect_r    : float -> Outlet throat aspect ratio (typically in the range 3:1 to 5:1)
     porosity    : float -> Open area ratio (only applied to the OutletGrill branch)
+    Machinf     : float -> Freestream Mach number for compressibility corrections [-]
+
+    Returns:
+    --------
+    cd          : float -> Dynamic discharge coefficient [-]
+    Cd_base     : float -> Static base drag coefficient at J=0 (referenced to q_inf and area_base) [-]
+    area_base   : float -> Statistically/geometrically derived solid base area [m2]
     """
-        
+
+
+    # BOUNDARY LAYER SETUP
     # Extract exit plane height to calculate non-dimensional boundary layer thickness
     h_exit = math.sqrt(a_exit / aspect_r)
 
@@ -127,27 +147,58 @@ def get_outlet_cd(outlet_type, J, delta=0, a_exit=None, aspect_r=4, porosity=0.6
     J_eff = J / max(1e-5, f_v * f_v)
     sqrt_J_eff = math.sqrt(J_eff)
     
+    # Base drag scales with local dynamic pressure ratio (shielding effect)
+    shielding = f_v * f_v
+
+
+    # Compressibility correction terms
+    m_squared_limit = min(0.95, Machinf**2)
+    # Prandtl-Glauert
+    pg_factor = math.sqrt(1.0 - m_squared_limit)
+
+
+
+    # OUTLET TYPE EVALUATION
     if outlet_type == "OutletInvertedScoop":
-        # Aft-Facing Extractor Scoop (Hoerner Drag, Ch. 12 & NACA ACR 5I20)
-        cd_max = 0.80 - 0.08 * min(0.5, bar_delta)
-        return cd_max - 0.05 * math.exp(-sqrt_J)
-        
+        # --- DISCHARGE COEFFICIENT ---
+        # Ref: NACA TN-3466, Fig.18, M0.7, flush 3.
+        mfr = [0.192, 0.220, 0.248, 0.280, 0.349, 0.434, 0.490, 0.600, 0.689, 0.799, 0.903]
+        K__ = [1.398, 1.170, 0.988, 0.831, 0.761, 0.797, 0.812, 0.785, 0.776, 0.782, 0.808]
+        cd = np.interp(sqrt_J_eff, mfr, K__)
+
+        # --- BASE DRAG ---
+        # Ref: AGARD-AG-264, Section 6.3.2 ("Scoop Outlets"), Fig. 6.14 df=20 AF=1.
+        Cd_base_0 = 0.25
+        Cd_base = (Cd_base_0 / pg_factor) * shielding
+
     elif outlet_type == "OutletParallelRamp":
-        # Parallel Flush Slot (ESDU 86002 / NACA TN 3924)
-        return 0.62 * (1.0 - 0.60 * math.exp(-2.0 * sqrt_J_eff))
-        
-    elif outlet_type == "OutletDivergentRamp":
-        # Flush Divergent Ramp Outlet (ESDU 86002 / NACA TN 3924)
-        return 0.70 * (1.0 - 0.40 * math.exp(-2.5 * sqrt_J_eff))
-        
+        # --- DISCHARGE COEFFICIENT ---
+        # Ref: NACA TN-3466, Fig.12, M0.7, flush 4.
+        mfr = [0., 0.252, 0.359, 0.484, 0.577, 0.708, 0.857]
+        K__ = [0., 0.560, 0.669, 0.776, 0.828, 0.878, 0.913]
+        cd = np.interp(sqrt_J_eff, mfr, K__)
+
+        # --- BASE DRAG ---
+        # Ref: AGARD-AG-264, Section 6.3.1 ("Flush Outlets"), Fig.6.21.
+        Cd_base_0 = 0.12
+        Cd_base = (Cd_base_0 / pg_factor) * shielding
+
     elif outlet_type == "OutletGrill":
-        # Flush Grill (Gritsch / Dittrich & Graves)
-        cd_baseline = 0.62 * porosity
-        vr_eff = 1.0 / max(1e-3, sqrt_J_eff)
-        return cd_baseline / math.sqrt(1.0 + 1.1 * vr_eff**2)        
+        # --- DISCHARGE COEFFICIENT ---
+        # Ref: NACA TN-3466, Fig.6, M0.7, AR 6.
+        mfr = [0., 0.177, 0.251, 0.396, 0.525, 0.655]
+        K__ = [0., 0.346, 0.439, 0.554, 0.642, 0.680]
+        cd = np.interp(sqrt_J_eff, mfr, K__)
+
+        # --- BASE DRAG ---
+        # Ref: AGARD-AG-264, Section 6.3.1 ("Flush Outlets").
+        Cd_base_0 = 0.01
+        Cd_base = (Cd_base_0 / pg_factor) * shielding
 
     else:
         raise ValueError(f"Unknown outlet type: {outlet_type}")
+
+    return cd, Cd_base
 
 
 
