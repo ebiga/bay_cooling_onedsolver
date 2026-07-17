@@ -20,8 +20,6 @@ def naca_pressure_recovery(mfr, Machinf, delta=0, area=None, aspect_r=4):
     delta    : Incoming boundary layer thickness [m]
     area     : Inlet throat area [m2]
     aspect_r : Inlet throat aspect ratio (in the range 3:1 to 5:1)
-
-    h_i      : Inlet throat height [m]
     """
 
     # Clip for safety
@@ -102,17 +100,13 @@ def get_outlet_cd(outlet_type, J, Machinf):
         Drag_base = Cd_base * q_inf * a_exit
 
     Parameters:
-    -----------
-    outlet_type : str   -> "OutletInvertedScoop", "OutletParallelRamp", etc.
-    J           : float -> Momentum flux ratio ((rho_exit * V_exit^2) / (rho_inf * V_inf^2))
-    a_exit      : float -> Area of the exit nozzle opening [m2]
-    aspect_r    : float -> Outlet throat aspect ratio (typically in the range 3:1 to 5:1)
-    Machinf     : float -> Freestream Mach number for compressibility corrections [-]
+    outlet_type : OutletInvertedScoop, OutletParallelRamp, OutletGrill
+    J           : Momentum flux ratio ((rho_exit * V_exit^2) / (rho_inf * V_inf^2))
+    Machinf     : Freestream Mach number for compressibility corrections [-]
 
     Returns:
-    --------
-    cd          : float -> Dynamic discharge coefficient [-]
-    Cd_base     : float -> Static base drag coefficient at J=0 (referenced to q_inf) [-]
+    cd          : Dynamic discharge coefficient [-]
+    Cd_base     : Static base drag coefficient at J=0 (referenced to q_inf) [-]
     """
 
 
