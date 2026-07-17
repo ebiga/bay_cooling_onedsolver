@@ -5,7 +5,7 @@ import inputs
 
 
 
-def naca_pressure_recovery(mfr, Machinf, delta=0, area=None, C_vortex=2.0, aspect_r=4):
+def naca_pressure_recovery(mfr, Machinf, delta=0, area=None, aspect_r=4):
     """
     Empirical fit for standard NACA submerged flush inlet pressure recovery.
     Based on the classics, NACA RM A7I30 / NACA ACR 5120
@@ -19,7 +19,6 @@ def naca_pressure_recovery(mfr, Machinf, delta=0, area=None, C_vortex=2.0, aspec
     mfr      : Mass flow ratio (V_throat / V_inf)
     delta    : Incoming boundary layer thickness [m]
     area     : Inlet throat area [m2]
-    C_vortex : Vortex scavenging efficiency (typically 1.8 to 2.2)
     aspect_r : Inlet throat aspect ratio (in the range 3:1 to 5:1)
 
     h_i      : Inlet throat height [m]
@@ -78,14 +77,10 @@ def naca_pressure_recovery(mfr, Machinf, delta=0, area=None, C_vortex=2.0, aspec
     fig19a_delta_eta = [-0.01, 0.00, -0.006, -0.035, -0.050, 0.053, 0.02]
     delta_eta_mf = np.interp(delta_mu, fig19a_delta_mu, fig19a_delta_eta)
 
-    # Optional tuning parameter hook: C_vortex can scale the BL sensitivity slightly 
-    # if you want to shift the baseline curve up or down. Default is 2.0 (neutral).
-    vortex_scaling = (2.0 / C_vortex) if C_vortex > 0 else 1.0
-
 
     # TOTAL RECOVERY BOOKKEEPING
-    eta = eta_m + (delta_eta_mf * vortex_scaling)
-    eta = min(max(0.05, eta), 1.0)
+    eta = eta_m + delta_eta_mf
+    eta = min(max(0.01, eta), 1.0)
 
 
     return eta, Cd_spill
