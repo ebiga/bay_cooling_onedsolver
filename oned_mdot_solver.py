@@ -21,8 +21,8 @@ def size_ventilation(mdot_target_kg_s, T_max_K=None, dPtot_driven_Pa=None):
     v_inf = inputs.Mach * a_inf
     rho_inf = p_inf_Pa / (R_gas * T_inf_K)
 
-    pt_inf = p_inf_Pa * (1.0 + gamm2 * inputs.Mach**2)**(gamma/gamm1)
-    Tt_inf = T_inf_K  * (1.0 + gamm2 * inputs.Mach**2)
+    pt_inf = p_inf_Pa * isentM(inputs.Mach, 'pressure')
+    Tt_inf = T_inf_K  * isentM(inputs.Mach, 'temperature')
 
     qdin_inf = pt_inf - p_inf_Pa
 
@@ -57,18 +57,6 @@ def size_ventilation(mdot_target_kg_s, T_max_K=None, dPtot_driven_Pa=None):
 
         pt_1 = p_inf_Pa + eta_d * qdin_inf
         Tt_1 = Tt_inf  # ASSUMPTION: no total temp losses at the inlet
-
-
-        # =========================================================================
-        # INLET: NACA throat
-        # =========================================================================
-        m_1 = solve_throat_mach(mdot_target_kg_s, a_throat_guess, pt_1, Tt_1)
-        t_static_1 = Tt_1 / (1.0 + gamm2 * m_1**2)
-        p_static_1 = pt_1 / (1.0 + gamm2 * m_1**2)**(gamma/gamm1)
-        rho_static_1 = p_static_1 / (R_gas * t_static_1)
-        v_1 = m_1 * math.sqrt(gamma * R_gas * t_static_1)
-
-        mu_static_1 = ViscositySutherland(t_static_1)
 
 
         # =========================================================================

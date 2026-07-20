@@ -37,11 +37,10 @@ def solve_throat_mach(mfr_target_kg_m3, S_throat_m2, Ptot_Pa, Ttot_Pa):
         # define freestream total properties
         rhotot_kg_m3 = Ptot_Pa / (R_gas * Ttot_Pa)
 
-        # define the local (inlet) conditions to be optimised
-        isenM = 1. + 0.5*gamm1 * x[0]**2.
+        Mach = x[0]
 
-        p1_Pa = Ptot_Pa / (isenM**(gamma/gamm1))
-        rho1_kg_m3 = rhotot_kg_m3 / (isenM**(1./gamm1))
+        p1_Pa = Ptot_Pa / isentM(Mach, 'pressure')
+        rho1_kg_m3 = rhotot_kg_m3 / isentM(Mach, 'density')
         M1 = mfr_target_kg_m3/(S_throat_m2 * math.sqrt(gamma*p1_Pa*rho1_kg_m3))
 
         return (x[0] - M1)**2.
@@ -81,14 +80,26 @@ def solve_local_states(mdot, area, pt, Tt):
 
     # Get the local Mach number
     M_local = solve_throat_mach(mdot, area, pt, Tt)
-    
-    # Compute the corresponding static thermodynamic state
-    isenM = 1.0 + 0.5 * gamm1 * M_local**2
-    
-    t_local = Tt / isenM
-    p_local = pt / (isenM**(gamma / gamm1))
+
+    t_local = Tt / isentM(M_local, 'temperature')
+    p_local = pt / isentM(M_local, 'pressure')
     rho_local = p_local / (R_gas * t_local)
     v_local = M_local * math.sqrt(gamma * R_gas * t_local)
     mu_local = ViscositySutherland(t_local)
-    
+
     return M_local, t_local, p_local, rho_local, v_local, mu_local
+
+
+
+def isentM(Mach, property):
+
+    isenM = 1.0 + gamm2 * Mach**2
+
+    if property == 'temperature':
+        return isenM
+    elif property == 'pressure':
+        return isenM**(gamma/gamm1)
+    elif property == 'density':
+        return isenM**(1./gamm1)
+    else:
+        raise ValueError(f"Wrong property in isentM.")
