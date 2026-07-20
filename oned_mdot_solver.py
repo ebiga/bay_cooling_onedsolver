@@ -118,6 +118,7 @@ def size_ventilation(mdot_target_kg_s, T_max_K=None, dPtot_driven_Pa=None):
                 _, dp_elem = bend_loss(
                     mdot=mdot_target_kg_s,
                     rho=rho_local,
+                    mu=mu_local,
                     r_centerline=element["r_centerline"],
                     area=area_elem,
                     diam_hydro=dh
