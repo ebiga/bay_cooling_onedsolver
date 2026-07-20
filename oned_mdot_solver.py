@@ -24,7 +24,7 @@ def size_ventilation(mdot_target_kg_s, T_max_K=None, dPtot_driven_Pa=None):
     pt_inf = p_inf_Pa * isentM(inputs.Mach, 'pressure')
     Tt_inf = T_inf_K  * isentM(inputs.Mach, 'temperature')
 
-    qdin_inf = pt_inf - p_inf_Pa
+    qdin_inf = 0.5 * rho_inf * v_inf**2
 
 
     # External static pressure at the exit dump location
