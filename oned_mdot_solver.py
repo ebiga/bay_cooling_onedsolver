@@ -161,13 +161,13 @@ def size_ventilation(mdot_target_kg_s, T_max_K=None, dPtot_driven_Pa=None):
             
         v_exit_nominal = mdot_target_kg_s / (rho_exit * a_exit)
 
-        # MOMENTUM FLUX RATIO (J) & GEOMETRIC BOUNDARY LAYER SCALING
-        J = (rho_exit * v_exit_nominal**2) / (rho_inf * v_inf**2 * (1.0 - inputs.Cp_exit))
+        # MASS FLUX RATIO (J), corrected by simplified exit conditions
+        J = (rho_exit * v_exit_nominal) / (rho_inf * v_inf * math.sqrt(1.0 - inputs.Cp_exit))
 
         # Nozzle effective discharge area
         Mach_e = math.sqrt(5.0 * ((1.0 + 0.2 * inputs.Mach**2) / (1.0 + 0.7 * inputs.Mach**2 * inputs.Cp_exit)**(1.0 / 3.5) - 1.0))
 
-        Cdischarge, CD_base = get_outlet_cd(outlet_type=inputs.outlet_type, J=J, Mach_e=Mach_e)
+        Cdischarge, CD_base = get_outlet_cd(outlet_type=inputs.outlet_type, Vrel=J, Mach_e=Mach_e)
         a_effective_exit = Cdischarge * a_exit
 
         # Use the true corrected exit density for the dynamic backpressure delta P
