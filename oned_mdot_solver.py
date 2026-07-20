@@ -150,12 +150,19 @@ def size_ventilation(mdot_target_kg_s, T_max_K=None, dPtot_driven_Pa=None):
         v_exit_nominal = mdot_target_kg_s / (rho_exit * a_exit)
 
         # MASS FLUX RATIO (J), corrected by simplified exit conditions
-        J = (rho_exit * v_exit_nominal) / (rho_inf * v_inf * math.sqrt(1.0 - inputs.Cp_exit))
+        # Local External Flow State at Exit
+        Mach_local = math.sqrt(5.0 * ((1.0 + 0.2 * inputs.Mach**2) / (1.0 + 0.7 * inputs.Mach**2 * inputs.Cp_exit)**(1.0 / 3.5) - 1.0))
+
+        T_local = Tt_inf * (p_static_ext_exit / pt_inf)**(gamm1 / gamma)
+        rho_local = p_static_ext_exit / (R_gas * T_local)
+
+        v_local = Mach_local * math.sqrt(gamma * R_gas * T_local)
+
+        # Finally the mass flow ratio
+        J = (rho_exit * v_exit_nominal) / (rho_local * v_local)
 
         # Nozzle effective discharge area
-        Mach_e = math.sqrt(5.0 * ((1.0 + 0.2 * inputs.Mach**2) / (1.0 + 0.7 * inputs.Mach**2 * inputs.Cp_exit)**(1.0 / 3.5) - 1.0))
-
-        Cdischarge, CD_base = get_outlet_cd(outlet_type=inputs.outlet_type, Vrel=J, Mach_e=Mach_e)
+        Cdischarge, CD_base = get_outlet_cd(outlet_type=inputs.outlet_type, Vrel=J, Mach_e=Mach_local)
         a_effective_exit = Cdischarge * a_exit
 
         # Use the true corrected exit density for the dynamic backpressure delta P
