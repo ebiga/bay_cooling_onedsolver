@@ -10,6 +10,6 @@ Piping types: pipe, bend [as many as needed, in sequence]
 Consumer types: VentingBay, CoolingBay, FanCooler
 
 Modelling details:
-- mostly incompressible flow inside the piping, assuming it decelerates from transonic flight to low Mach internal
-- the NACA inlet is modelled loosely following ESDU 86002
-- inlet and outlet efficiencies are corrected for local boundary layer effects
+- compressible formulation for the piping elements
+- the NACA inlet is modelled similarly to ESDU 86002, incl. local boundary layer effects
+- outlet models are based on NACA TN3466
