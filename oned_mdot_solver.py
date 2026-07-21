@@ -17,14 +17,14 @@ def size_ventilation(mdot_target_kg_s, T_max_K=None, dPtot_driven_Pa=None):
 
 
     # Freestream Aerodynamics & Stagnation States
-    a_inf = math.sqrt(gamma * R_gas * T_inf_K)
+    a_inf = ComputeSpeedOfSoundFromTemperature(T_inf_K)
     v_inf = inputs.Mach * a_inf
-    rho_inf = p_inf_Pa / (R_gas * T_inf_K)
+    rho_inf = ComputeConstitutiveDensity(p_inf_Pa, T_inf_K)
 
-    pt_inf = p_inf_Pa * (1.0 + gamm2 * inputs.Mach**2)**(gamma/gamm1)
-    Tt_inf = T_inf_K  * (1.0 + gamm2 * inputs.Mach**2)
+    pt_inf = p_inf_Pa * isentM(inputs.Mach, 'pressure')
+    Tt_inf = T_inf_K  * isentM(inputs.Mach, 'temperature')
 
-    qdin_inf = pt_inf - p_inf_Pa
+    qdin_inf = 0.5 * rho_inf * v_inf**2
 
 
     # External static pressure at the exit dump location
@@ -57,18 +57,6 @@ def size_ventilation(mdot_target_kg_s, T_max_K=None, dPtot_driven_Pa=None):
 
         pt_1 = p_inf_Pa + eta_d * qdin_inf
         Tt_1 = Tt_inf  # ASSUMPTION: no total temp losses at the inlet
-
-
-        # =========================================================================
-        # INLET: NACA throat
-        # =========================================================================
-        m_1 = solve_throat_mach(mdot_target_kg_s, a_throat_guess, pt_1, Tt_1)
-        t_static_1 = Tt_1 / (1.0 + gamm2 * m_1**2)
-        p_static_1 = pt_1 / (1.0 + gamm2 * m_1**2)**(gamma/gamm1)
-        rho_static_1 = p_static_1 / (R_gas * t_static_1)
-        v_1 = m_1 * math.sqrt(gamma * R_gas * t_static_1)
-
-        mu_static_1 = ViscositySutherland(t_static_1)
 
 
         # =========================================================================
@@ -118,6 +106,7 @@ def size_ventilation(mdot_target_kg_s, T_max_K=None, dPtot_driven_Pa=None):
                 _, dp_elem = bend_loss(
                     mdot=mdot_target_kg_s,
                     rho=rho_local,
+                    mu=mu_local,
                     r_centerline=element["r_centerline"],
                     area=area_elem,
                     diam_hydro=dh
@@ -155,18 +144,25 @@ def size_ventilation(mdot_target_kg_s, T_max_K=None, dPtot_driven_Pa=None):
         Tt_exit = Tt_current
 
         #_ Isentropic expansion from degraded bay total pressure to external static pressure
-        rho_t_bay = max(pt_bay, p_static_ext_exit) / (R_gas * Tt_exit)
+        rho_t_bay = ComputeConstitutiveDensity(pt_bay, Tt_exit)
         rho_exit = rho_t_bay * (p_static_ext_exit / pt_bay)**(1.0 / gamma)
             
         v_exit_nominal = mdot_target_kg_s / (rho_exit * a_exit)
 
-        # MOMENTUM FLUX RATIO (J) & GEOMETRIC BOUNDARY LAYER SCALING
-        J = (rho_exit * v_exit_nominal**2) / (rho_inf * v_inf**2 * (1.0 - inputs.Cp_exit))
+        # MASS FLUX RATIO (J), corrected by simplified exit conditions
+        # Local External Flow State at Exit
+        Mach_local = math.sqrt(5.0 * ((1.0 + gamm2 * inputs.Mach**2) / (1.0 + 0.5 * gamma * inputs.Mach**2 * inputs.Cp_exit)**(gamm1/gamma) - 1.0))
+
+        T_local = Tt_inf * (p_static_ext_exit / pt_inf)**(gamm1 / gamma)
+        rho_local = ComputeConstitutiveDensity(p_static_ext_exit, T_local)
+
+        v_local = Mach_local * ComputeSpeedOfSoundFromTemperature(T_local)
+
+        # Finally the mass flow ratio
+        J = (rho_exit * v_exit_nominal) / (rho_local * v_local)
 
         # Nozzle effective discharge area
-        Mach_e = math.sqrt(5.0 * ((1.0 + 0.2 * inputs.Mach**2) / (1.0 + 0.7 * inputs.Mach**2 * inputs.Cp_exit)**(1.0 / 3.5) - 1.0))
-
-        Cdischarge, CD_base = get_outlet_cd(outlet_type=inputs.outlet_type, J=J, Mach_e=Mach_e)
+        Cdischarge, CD_base = get_outlet_cd(outlet_type=inputs.outlet_type, Vrel=J, Mach_e=Mach_local)
         a_effective_exit = Cdischarge * a_exit
 
         # Use the true corrected exit density for the dynamic backpressure delta P
@@ -220,7 +216,7 @@ def size_ventilation(mdot_target_kg_s, T_max_K=None, dPtot_driven_Pa=None):
     # Solve for required area
     try:
         mfr_bounds = ( 0.1, 1. )
-        aexit_bounds = ( 0.5, 10. )
+        aexit_bounds = ( 0.2, 4. )
 
         # Define equality constraint: pressure residual must equal zero
         constraints = {"type": "eq", "fun": const_pressure}

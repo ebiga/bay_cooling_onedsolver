@@ -85,7 +85,7 @@ def naca_pressure_recovery(mfr, Machinf, delta=0, area=None, aspect_r=4):
 
 
 
-def get_outlet_cd(outlet_type, J, Mach_e):
+def get_outlet_cd(outlet_type, Vrel, Mach_e):
     """
     Determine the dynamic discharge coefficient (Cd) and static base drag properties
     for different outlet configurations under external crossflow.
@@ -101,17 +101,13 @@ def get_outlet_cd(outlet_type, J, Mach_e):
 
     Parameters:
     outlet_type : OutletInvertedScoop, OutletParallelRamp, OutletGrill
-    J           : Momentum flux ratio ((rho_exit * V_exit^2) / (rho_inf * V_inf^2))
+    Vrel        : Mass flux ratio ((rho_exit * V_exit) / (rho_inf * V_inf))
     Mach_e      : Exit "freestream" Mach number for compressibility corrections [-]
 
     Returns:
     cd          : Dynamic discharge coefficient [-]
     Cd_base     : Static base drag coefficient at J=0 (referenced to q_inf) [-]
     """
-
-
-    # Mass-balanced relative velocity. 
-    Vrel = math.sqrt(J)
 
 
     # Compressibility correction terms
@@ -195,21 +191,29 @@ def straight_duct_loss(mdot, rho, mu, length, area, diam_hydro, roughness=0.0015
 
 
 
-def bend_loss(mdot, rho, r_centerline, area, diam_hydro):
+def bend_loss(mdot, rho, mu, r_centerline, area, diam_hydro, roughness=0.0015e-3):
     """
-    Computes total pressure loss across a 90-degree bend based on geometric sharpness.
-    Uses a standard empirical curve-fit optimized for clean ducting networks.
+    Computes total pressure loss across a 90-degree bend by combining:
+    1. Pure secondary-flow turning loss (Idelchik geometry fit).
+    2. Centerline skin friction loss computed via straight_duct_loss().
     """
 
-    # Local velocity and dynamic pressure
+    # Local dynamic pressure
     v = mdot / (rho * area)
     q = 0.5 * rho * v**2
     
     # Enforce minimum curvature ratio to avoid math runtime issues
     r_ratio = max(0.1, r_centerline / diam_hydro)
     
-    # Idelchik-aligned bend loss formulation
-    k_bend = 0.131 + 0.163 * (1.0 / r_ratio)**3.5
+    # 1. Pure secondary-flow turning loss (Idelchik fit)
+    k_turning = 0.131 + 0.163 * (1.0 / r_ratio)**3.5
+    
+    # 2. Skin friction loss along the 90-degree centerline arc length (L = R * pi / 2)
+    arc_length = r_centerline * (math.pi / 2.0)
+    k_friction, _ = straight_duct_loss(mdot, rho, mu, arc_length, area, diam_hydro, roughness)
+    
+    # Total bend loss sum
+    k_bend = k_turning + k_friction
     dp_bend = k_bend * q
     
     return k_bend, dp_bend
