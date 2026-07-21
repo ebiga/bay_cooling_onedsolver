@@ -216,7 +216,7 @@ def size_ventilation(mdot_target_kg_s, T_max_K=None, dPtot_driven_Pa=None):
     # Solve for required area
     try:
         mfr_bounds = ( 0.1, 1. )
-        aexit_bounds = ( 0.5, 10. )
+        aexit_bounds = ( 0.2, 4. )
 
         # Define equality constraint: pressure residual must equal zero
         constraints = {"type": "eq", "fun": const_pressure}
