@@ -17,9 +17,9 @@ def size_ventilation(mdot_target_kg_s, T_max_K=None, dPtot_driven_Pa=None):
 
 
     # Freestream Aerodynamics & Stagnation States
-    a_inf = math.sqrt(gamma * R_gas * T_inf_K)
+    a_inf = ComputeSpeedOfSoundFromTemperature(T_inf_K)
     v_inf = inputs.Mach * a_inf
-    rho_inf = p_inf_Pa / (R_gas * T_inf_K)
+    rho_inf = ComputeConstitutiveDensity(p_inf_Pa, T_inf_K)
 
     pt_inf = p_inf_Pa * isentM(inputs.Mach, 'pressure')
     Tt_inf = T_inf_K  * isentM(inputs.Mach, 'temperature')
@@ -144,19 +144,19 @@ def size_ventilation(mdot_target_kg_s, T_max_K=None, dPtot_driven_Pa=None):
         Tt_exit = Tt_current
 
         #_ Isentropic expansion from degraded bay total pressure to external static pressure
-        rho_t_bay = max(pt_bay, p_static_ext_exit) / (R_gas * Tt_exit)
+        rho_t_bay = ComputeConstitutiveDensity(pt_bay, Tt_exit)
         rho_exit = rho_t_bay * (p_static_ext_exit / pt_bay)**(1.0 / gamma)
             
         v_exit_nominal = mdot_target_kg_s / (rho_exit * a_exit)
 
         # MASS FLUX RATIO (J), corrected by simplified exit conditions
         # Local External Flow State at Exit
-        Mach_local = math.sqrt(5.0 * ((1.0 + 0.2 * inputs.Mach**2) / (1.0 + 0.7 * inputs.Mach**2 * inputs.Cp_exit)**(1.0 / 3.5) - 1.0))
+        Mach_local = math.sqrt(5.0 * ((1.0 + gamm2 * inputs.Mach**2) / (1.0 + 0.5 * gamma * inputs.Mach**2 * inputs.Cp_exit)**(gamm1/gamma) - 1.0))
 
         T_local = Tt_inf * (p_static_ext_exit / pt_inf)**(gamm1 / gamma)
-        rho_local = p_static_ext_exit / (R_gas * T_local)
+        rho_local = ComputeConstitutiveDensity(p_static_ext_exit, T_local)
 
-        v_local = Mach_local * math.sqrt(gamma * R_gas * T_local)
+        v_local = Mach_local * ComputeSpeedOfSoundFromTemperature(T_local)
 
         # Finally the mass flow ratio
         J = (rho_exit * v_exit_nominal) / (rho_local * v_local)
