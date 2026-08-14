@@ -216,14 +216,14 @@ def size_ventilation(mdot_target_kg_s, T_max_K=None, run_fixed_areas=False):
 
 
         # Cache results
+        state_tracker["pt_1"] = pt_1
+        state_tracker["Tt_1"] = Tt_1
+
         state_tracker["mdot"] = mdot_target_kg_s
         state_tracker["mfr"] = mfr
 
         state_tracker["inlet_area"] = a_throat_guess
         state_tracker["outlet_area"] = a_exit
-
-        state_tracker["pt_1"] = pt_1
-        state_tracker["Tt_1"] = Tt_1
 
         state_tracker["pt_bay"] = pt_bay
         state_tracker["Tt_exit"] = Tt_exit
@@ -374,6 +374,11 @@ def grid_search():
                 try:
                     result = solve_fixed_geometry(altitude_ft=altitude_ft, Mach=Mach, dISA_K=dISA_K)
 
+                    # remove optimisation information
+                    result.pop("dp_outlet")
+                    result.pop("delta_pressure")
+                    result.pop("error_pressure")
+
                     # gather inlet throat information to output
                     M1, T1, p1, rho1, v1, _ = solve_local_states(mdot=result["mdot"], area=inlet__area_m2, pt=result["pt_1"], Tt=result["Tt_1"])
 
@@ -385,10 +390,10 @@ def grid_search():
                         "p_inf": p_inf,
                         "T_inf": T_inf,
                         "rho_inf": rho_inf,
-                        "pt_inf": pt_inf,
-                        "Tt_inf": Tt_inf,
                         "v_inf": v_inf,
                         "q_inf": qdin_inf,
+                        "pt_inf": pt_inf,
+                        "Tt_inf": Tt_inf,
 
                         "M1": M1,
                         "T1": T1,
