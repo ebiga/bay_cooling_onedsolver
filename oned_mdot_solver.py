@@ -6,7 +6,7 @@ from auxfunctions import *
 from InletOutletModels import *
 
 
-def size_ventilation(mdot_target_kg_s, T_max_K=None, dPtot_driven_Pa=None):
+def size_ventilation(mdot_target_kg_s, T_max_K=None):
     """
     Sizes the required NACA inlet throat area to satisfy a target mfr and systems requirements.
     Calculates ram and spillage drag inline to support drag-targeted optimization routines.
@@ -277,7 +277,6 @@ def run_case():
             TARGET_ACPM   = item["TARGET_ACPM"]
     
             T_max_K = None
-            dPtot_driven_Pa = None
 
             vol_flow_rate_rps = (TARGET_ACPM / 60.0) * BAY_VOLUME_M3
             mdot_target_acpm = rho_inf * vol_flow_rate_rps
@@ -292,7 +291,6 @@ def run_case():
             Q_BAY_LOAD_W      = item["Q_BAY_LOAD_W"]
 
             T_max_K = T_SYSTEM_MAX_degC + 273.15
-            dPtot_driven_Pa = None
 
             Tt_inf = T_inf * (1.0 + gamm2 * inputs.Mach**2)
             dT_allowed = T_max_K - Tt_inf
@@ -305,7 +303,6 @@ def run_case():
         # Required MFR for: Fan Blower
         if item.get("type") == "FanCooler":
             mdot_target_fan = item["MassFlowRate_kg_s"]
-            dPtot_driven_Pa = item["TotalPressureDrop_Pa"]
 
             T_max_K = None
 
@@ -314,7 +311,7 @@ def run_case():
             print(f"  Mass Flow to fan: {mdot_target_fan:.4f} kg/s")
 
     # Find the appropriate inlet and outlet areas.
-    res = size_ventilation(mdot_target_kg_s=mdot_target, T_max_K=T_max_K, dPtot_driven_Pa=dPtot_driven_Pa)
+    res = size_ventilation(mdot_target_kg_s=mdot_target, T_max_K=T_max_K)
 
     return res
 
