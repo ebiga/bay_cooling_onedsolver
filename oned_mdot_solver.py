@@ -1,12 +1,23 @@
 import math
 
-from scipy.optimize import minimize, Bounds
+from scipy.optimize import minimize, brentq
+
+import numpy as np
+import pandas as pd
 
 from auxfunctions import *
 from InletOutletModels import *
 
+VERBOSE=False
 
-def size_ventilation(mdot_target_kg_s, T_max_K=None):
+
+inlet__area_m2 = None
+outlet_area_m2 = None
+
+
+
+
+def size_ventilation(mdot_target_kg_s, T_max_K=None, run_fixed_areas=False):
     """
     Sizes the required NACA inlet throat area to satisfy a target mfr and systems requirements.
     Calculates ram and spillage drag inline to support drag-targeted optimization routines.
@@ -32,18 +43,29 @@ def size_ventilation(mdot_target_kg_s, T_max_K=None):
 
     # Local state tracking dictionary to capture the optimizer's current metrics
     state_tracker = {}
-    
+
+
     def evaluate_system_physics(x):
         """
         Executes the 1D aerothermal pipeline for a given geometry state.
         """
 
-        mfr = x[0]
-        area_ratio = x[1]
+        # Decide if optimising or running dry
+        if not run_fixed_areas:
+            # This sets stuff up for optimisation
+            mfr = x[0]
+            area_ratio = x[1]
 
-        # Calculate target throat area base on current MFR iteration
-        a_throat_guess = mdot_target_kg_s / (rho_inf * v_inf * mfr)
-        a_exit = a_throat_guess * area_ratio
+            # Calculate target throat area base on current MFR iteration
+            a_throat_guess = mdot_target_kg_s / (rho_inf * v_inf * mfr)
+            a_exit = a_throat_guess * area_ratio
+
+        else:
+            # This will run for fixed area
+            a_throat_guess = inlet__area_m2
+            a_exit = outlet_area_m2
+
+            mfr = mdot_target_kg_s / (rho_inf * v_inf * a_throat_guess)
 
 
         # Dynamic Inlet Total Pressure Recovery
@@ -186,19 +208,42 @@ def size_ventilation(mdot_target_kg_s, T_max_K=None):
         # THE CONVERGENCE RESIDUAL:
         # Energy balance requires that available bay pressure minus outlet drop matches the target exit plane state
         # Hard Physical Constraint: Available pressure must drive the flow out to ambient
-        error_pressure = abs((pt_bay - dp_outlet - p_static_ext_exit) / p_static_ext_exit)
+        delta_pressure = pt_bay - dp_outlet - p_static_ext_exit
+        error_pressure = abs(delta_pressure) / p_static_ext_exit
 
-        print(f"mfr: {mfr:.3e}, pressure err: {error_pressure:.3e}, naca eff: {eta_d:.3e}, outlet eff: {Cdischarge:.3f}, drag: {drag_total:.2f}")
+        if VERBOSE:
+            print(f"mfr: {mfr:.3e}, pressure err: {error_pressure:.3e}, naca eff: {eta_d:.3e}, outlet eff: {Cdischarge:.3f}, drag: {drag_total:.2f}")
 
-        # Cache results for optimizer evaluation reads
-        state_tracker["drag_ram"] = drag_ram
-        state_tracker["drag_spillage"] = drag_spillage
-        state_tracker["drag_total"] = drag_total
-        state_tracker["error_pressure"] = error_pressure
+
+        # Cache results
+        state_tracker["mdot"] = mdot_target_kg_s
+        state_tracker["mfr"] = mfr
+
         state_tracker["inlet_area"] = a_throat_guess
         state_tracker["outlet_area"] = a_exit
-        state_tracker["Cdischarge"] = Cdischarge
+
+        state_tracker["pt_1"] = pt_1
+        state_tracker["Tt_1"] = Tt_1
+
+        state_tracker["pt_bay"] = pt_bay
+        state_tracker["Tt_exit"] = Tt_exit
+
+        state_tracker["p_exit"] = p_static_ext_exit
+        state_tracker["dp_outlet"] = dp_outlet
+
+        state_tracker["delta_pressure"] = delta_pressure
+        state_tracker["error_pressure"] = error_pressure
+
         state_tracker["eta_d"] = eta_d
+        state_tracker["Cd_spill"] = Cd_spill
+        state_tracker["Cdischarge"] = Cdischarge
+        state_tracker["CD_base"] = CD_base
+
+        state_tracker["drag_ram"] = drag_ram
+        state_tracker["drag_spillage"] = drag_spillage
+        state_tracker["drag_base"] = drag_base
+        state_tracker["drag_total"] = drag_total
+
 
         return
 
@@ -210,6 +255,11 @@ def size_ventilation(mdot_target_kg_s, T_max_K=None):
     def const_pressure(x):
         evaluate_system_physics(x)
         return state_tracker["error_pressure"]
+
+        # FIXED-GEOMETRY MODE
+    if run_fixed_areas:
+        evaluate_system_physics(None)
+        return state_tracker
 
 
 
@@ -234,7 +284,7 @@ def size_ventilation(mdot_target_kg_s, T_max_K=None):
             raise RuntimeError("SLSQP failed to converge constraints cleanly.")
 
         # Ensure track states match the final optimized vector exactly
-        evaluate_system_physics(res.x)        
+        evaluate_system_physics(res.x)
 
         return {
             "status": "Success",
@@ -253,6 +303,117 @@ def size_ventilation(mdot_target_kg_s, T_max_K=None):
             "status": "Failed",
             "reason": "Solver execution failed. Ram air pressure cannot drive this mass flow through chosen outlet restriction."
         }
+
+
+
+
+def solve_fixed_geometry(altitude_ft, Mach, dISA_K):
+    '''
+    Auxiliary function to run the pressure minimisation of size_ventilation() _AFTER_
+    the inlet and outlet areas have been found.
+    This is called by a grid searcher to run the operation in a flight envelope.
+    '''
+
+    # Change the "inputs" global for the sweep on the fly
+    inputs.altitude_ft = altitude_ft
+    inputs.Mach = Mach
+    inputs.dISA_K = dISA_K
+
+
+    def residual(mdot):
+        state_tracker = size_ventilation(mdot_target_kg_s=mdot, T_max_K=None, run_fixed_areas=True)
+        return state_tracker["delta_pressure"]
+
+    # Root solve
+    mdot_lo = 1e-6
+    mdot_hi = 10.0
+
+    f_lo = residual(mdot_lo)
+    f_hi = residual(mdot_hi)
+
+    # Expand upper bound until the root is bracketed
+    while f_lo * f_hi > 0.0:
+        mdot_hi *= 2.0
+
+        if mdot_hi > 1000.0:
+            raise RuntimeError("Could not find mass-flow solution.")
+
+        f_hi = residual(mdot_hi)
+
+    # try to find the mdot for this flight condition
+    mdot = brentq(residual, mdot_lo, mdot_hi, xtol=1e-8)
+
+    # Evaluate one final time at the converged mass flow
+    return size_ventilation(mdot_target_kg_s=mdot, T_max_K=None, run_fixed_areas=True)
+
+
+
+
+def grid_search():
+    print("Sweeping the envelope now...")
+    results = []
+
+    range_Mach = np.arange(0.2, 0.86, 0.05)
+    range_altitude_ft = np.arange(0, 40001, 1000)
+    range_dISA_K = [0.]
+
+    for dISA_K in range_dISA_K:
+        for altitude_ft in range_altitude_ft:
+            for Mach in range_Mach:
+
+                # gather freestream data to output
+                p_inf, T_inf, rho_inf, _ = atmo(altitude_ft, dISA_K)
+                pt_inf = p_inf * isentM(Mach, 'pressure')
+                Tt_inf = T_inf * isentM(Mach, 'temperature')
+                a_inf = ComputeSpeedOfSoundFromTemperature(T_inf)
+                v_inf = Mach * a_inf
+                qdin_inf = 0.5 * rho_inf * v_inf**2
+
+
+                # solve for the current point in the envelope
+                try:
+                    result = solve_fixed_geometry(altitude_ft=altitude_ft, Mach=Mach, dISA_K=dISA_K)
+
+                    # gather inlet throat information to output
+                    M1, T1, p1, rho1, v1, _ = solve_local_states(mdot=result["mdot"], area=inlet__area_m2, pt=result["pt_1"], Tt=result["Tt_1"])
+
+                    row = {
+                        "altitude_ft": altitude_ft,
+                        "Mach": Mach,
+                        "dISA_K": dISA_K,
+
+                        "p_inf": p_inf,
+                        "T_inf": T_inf,
+                        "rho_inf": rho_inf,
+                        "pt_inf": pt_inf,
+                        "Tt_inf": Tt_inf,
+                        "v_inf": v_inf,
+                        "q_inf": qdin_inf,
+
+                        "M1": M1,
+                        "T1": T1,
+                        "p1": p1,
+                        "rho1": rho1,
+                        "v1": v1,
+                    }
+
+                    row.update(result)
+                    results.append(row)
+
+                    if VERBOSE:
+                        print(f"Point in envelope: {altitude_ft:6.0f} ft; M={Mach:.2f}")
+
+
+                except Exception as e:
+                    print(f"FAILED: {altitude_ft:6.0f} ft, M={Mach:.2f}, {e}")
+
+
+        # WRITE GRID RESULTS
+        df = pd.DataFrame(results)
+        df.to_csv("inlet_offdesign_grid.csv", index=False)
+
+        print()
+        print(f"Done. Saved {len(df)} results to inlet_offdesign_grid.csv")
 
 
 
@@ -283,7 +444,8 @@ def run_case():
 
             mdot_target = max(mdot_target, mdot_target_acpm)
 
-            print(f"  Mass Flow to vent: {mdot_target_acpm:.4f} kg/s")
+            if VERBOSE:
+                print(f"  Mass Flow to vent: {mdot_target_acpm:.4f} kg/s")
 
         # Required MFR for: Cooling
         if item.get("type") == "CoolingBay":
@@ -298,7 +460,8 @@ def run_case():
 
             mdot_target = max(mdot_target, mdot_target_thermal)
 
-            print(f"  Mass Flow to cool: {mdot_target_thermal:.4f} kg/s")
+            if VERBOSE:
+                print(f"  Mass Flow to cool: {mdot_target_thermal:.4f} kg/s")
 
         # Required MFR for: Fan Blower
         if item.get("type") == "FanCooler":
@@ -308,7 +471,8 @@ def run_case():
 
             mdot_target = max(mdot_target, mdot_target_fan)
 
-            print(f"  Mass Flow to fan: {mdot_target_fan:.4f} kg/s")
+            if VERBOSE:
+                print(f"  Mass Flow to fan: {mdot_target_fan:.4f} kg/s")
 
     # Find the appropriate inlet and outlet areas.
     res = size_ventilation(mdot_target_kg_s=mdot_target, T_max_K=T_max_K)
@@ -316,8 +480,11 @@ def run_case():
     return res
 
 
+
+
 if __name__ == "__main__":
 
+    # Run the optimiser to find the optimum inlet and outlet areas
     res = run_case()
 
     if res["status"] == "Success":
@@ -328,5 +495,15 @@ if __name__ == "__main__":
         print(f"  Ram Drag         : {res['drag_ram_N']:.2f} N")
         print(f"  Spillage Drag    : {res['drag_spillage_N']:.2f} N")
         print(f"  Total Drag       : {res['drag_total_N']:.2f} N")
+
+
+        # Save the determined areas for the envelope evaluation
+        inlet__area_m2 = res['inlet__area_cm2'] / 10000.
+        outlet_area_m2 = res['outlet_area_cm2'] / 10000.
+
+        # Run the fixed areas in the operational envelope
+        grid_search()
+
+
     else:
         print(f"  Sizing Failed: {res.get('reason')}")
