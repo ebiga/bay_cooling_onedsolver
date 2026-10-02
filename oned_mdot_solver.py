@@ -326,7 +326,7 @@ def solve_fixed_geometry(altitude_ft, Mach, dISA_K):
 
     # Root solve
     mdot_lo = 1e-6
-    mdot_hi = 10.0
+    mdot_hi = 1.
 
     f_lo = residual(mdot_lo)
     f_hi = residual(mdot_hi)
